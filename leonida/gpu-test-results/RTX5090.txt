@@ -1,0 +1,31 @@
+GPU:        NVIDIA GeForce RTX 5090 (Blackwell / GB202), subgroup 32..32
+Driver:     NVIDIA 621.24 (proprietary), Vulkan 1.4 (loader 1.4.363.1, Vulkan SDK)
+Subgroup:   32..32 (minSubgroupSize 32, maxSubgroupSize 32)
+OS:         Windows 11 10.0.26300, 32,607 MiB of device memory
+Commit:     8f481cf16 (main, 2026-11-24)
+Tools:      llvm-mc 23.1.6 (conda-forge llvm-tools, native AMDGPU target), SPIRV-Tools v2026.4,
+            CMake 3.31.6, Ninja, MSVC 14.44.35207 (VS 2022 Build Tools), Python 3.13.14
+run_gpu_tests.py: 257 shaders: 257 translated, 257 pass spirv-val
+            native:                 197/248 passed, 49 skipped, 2 failed
+            LEONIDA_W64_EMULATE=1:  229/248 passed, 17 skipped, 2 failed
+Failed:     cs_imgload_tfe, cs_imgload_d16_tfe (native and emulated alike): the tfe status VGPR is
+            read but never written, #31 - the same pair the RTX 4070 Ti record reports.
+Skipped:    native: 31 "no 64-wide compute subgroup on this device", 1 "no 64-wide subgroup on this
+            device" and 1 "cannot require a 64-wide fragment subgroup" (the wave64 fixtures, which the
+            emulated run covers), plus the 16 documented "run by d3d12_*_test / w64_graphics.py" cases.
+            Emulated: the same 16, plus the 64-wide fragment one.
+Notes:
+- Built on Windows 11 with cmake -S runtime -B runtime/build -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo
+  -DLEONIDA_BUILD_WINDOWS_RUNTIME=OFF and cmake --build runtime/build. Only the vk_* programs were run
+  here; gta6rt and the shims need the retail package and are not part of this result.
+- llvm-mc is conda-forge's llvm-tools 23.1.6, the Windows build docs/testing.md names: the official
+  LLVM Windows release has no AMDGPU target.
+- The two "run by d3d12_*_test" failures at first were vk_bindless_test not built yet, not device
+  problems: after building that target, ps_imgatomic and ps_tex pass (12/12 in --filter ps_tex and
+  --filter ps_imgatomic).
+- No placed resources go through create_host_buffer in this suite, so the write-combined-page note
+  there is untouched by this run.
+- Nothing here quotes the executable or any other game file; the shaders are the synthetic RDNA2
+  programs in runtime/test/shaders.
+- AI-assisted (opencode): built the tree, ran run_gpu_tests.py native and with LEONIDA_W64_EMULATE=1,
+  and reran the bindless cases after building vk_bindless_test.

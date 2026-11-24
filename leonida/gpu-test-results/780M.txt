@@ -1,0 +1,38 @@
+GPU:        AMD Radeon 780M Graphics (RDNA3 iGPU, gfx1103, WDDM 3.2, 16 GB shared), subgroup 32..64
+Driver:     AMD proprietary 26.10.2 (32.0.32015.12012, LLPC), Vulkan 1.4.359
+Subgroup:   32..64 (minSubgroupSize 32, maxSubgroupSize 64)
+OS:         Windows 11, 10.0.29712
+Commit:     9ec34cdff41b19d7671bc260e5f40dc69790d905 (main, 2026-11-24)
+Tools:      llvm-mc 23.1.6 (conda-forge llvm-tools, AMDGPU target), SPIRV-Tools v2026.4,
+            Clang 23.1.6 (llvm-mingw 20261117), CMake 4.5.1 + Ninja 1.13.2, Python 3.13.17,
+            Vulkan headers: the repository's pinned 6802bb4733b63ed5efd3adb308a6c885ef180ea1
+            (vulkan-sdk-1.4.363.0)
+run_gpu_tests.py: 257 shaders: 257 translated, 257 pass spirv-val
+            228/248 passed, 16 skipped, 4 failed
+Failed:     cs_w32_exec_computed: got 8192 8192 8192 7682 512 4100 0 3
+            cs_w64_exec_computed: got 8224 8192 16384 16384 8192 4132 0 3
+            The SHADER-1264 fixtures: the translator half of that fix is not on main yet,
+            so the words that come back are the old ones. The CPU interpreter returns the
+            same two words (see #15), so this is not a GPU-only effect.
+            cs_imgload_tfe: exit 1. vk_store_test reports
+            "r32 sint (sint view): 64 bad, texel(5,3) = 2071", where the expected value
+            is 100 - (8y + x) = 71: every texel is off by exactly 2000, the value the
+            fixture seeds the tfe status VGPR with, so the fetch status VGPR is read but
+            never written.
+            cs_imgload_d16_tfe: the same, 64 bad, texel(5,3) = 2071.
+Skipped:    16 skips are the documented "run by d3d12_*_test / w64_graphics.py" cases:
+            cs_buf_counter, cs_buf_typed, cs_m4_fill, cs_m4_indirect, ps_live_width,
+            ps_m15, ps_m2, ps_m2_array, ps_m2_literal, ps_m2_uoff, ps_m3, ps_m3_post,
+            ps_m3_query, vs_m15, vs_m2, vs_m3.
+Notes:
+- Built with cmake -S runtime -B runtime/build/vulkan4 -G Ninja
+  -DCMAKE_CXX_COMPILER=<llvm-mingw clang++> -DLEONIDA_BUILD_WINDOWS_RUNTIME=OFF.
+  This machine has no MSVC and no Windows SDK, so the D3D12-side runtime and its tests
+  are not built; that is why the 16 cases above skip instead of running.
+- Every other case was exact: the pixel cases 4096/4096 and the compute values exact.
+- The same suite on the previous main (dde82f27, upstream before the repository went
+  private) gives the identical result on every one of the 240 cases the two share, so
+  nothing that used to pass on this GPU regressed. All four failures are in cases that
+  were added after dde82f27.
+- The tfe failures are #31; the exec_computed pair is #15.
+- AI-assisted (MiniMax Code).

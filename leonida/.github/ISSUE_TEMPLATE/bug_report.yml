@@ -1,0 +1,63 @@
+name: Bug report
+description: The build stops, a tool fails, or a shader or asset comes out wrong.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Search open and closed issues for the error text first, and comment there if it is already reported.
+        **Never attach game files**, extracted assets or generated shaders (DXBC, FSSM, disassembly, SPIR-V), and
+        don't paste more than a few lines of them. Only version 1.0.2.1 of your own Xbox Series package is
+        supported; issues about obtaining the game are closed.
+  - type: input
+    id: summary
+    attributes:
+      label: What happens
+      description: One sentence, with the exact error text if there is one.
+    validations:
+      required: true
+  - type: input
+    id: commit
+    attributes:
+      label: Commit
+      description: The commit you built from (`git rev-parse --short HEAD`), or the date you downloaded it.
+    validations:
+      required: true
+  - type: input
+    id: system
+    attributes:
+      label: System
+      description: OS, CPU, GPU and driver version, and the Python, LLVM and Vulkan SDK versions if the build failed.
+      placeholder: Windows 11 24H2, Ryzen 5 7600, RX 7800 XT (Adrenalin 25.10.1), Python 3.12.7, LLVM 21.1.8, Vulkan SDK 1.4.328
+    validations:
+      required: true
+  - type: dropdown
+    id: stage
+    attributes:
+      label: Where
+      options:
+        - Finding the game (--find)
+        - check
+        - shaders
+        - assets
+        - runtime
+        - pipelines
+        - Running gta6rt
+        - A tool run by hand (tools/, scripts/)
+    validations:
+      required: true
+  - type: textarea
+    id: command
+    attributes:
+      label: Command and steps
+      description: How you started it (`Build.bat` or the exact `make_game.py` command) and whether it happens every time.
+    validations:
+      required: true
+  - type: textarea
+    id: output
+    attributes:
+      label: Output
+      description: The last lines the console printed, from the stage that failed down to the error.
+      render: text
+    validations:
+      required: true

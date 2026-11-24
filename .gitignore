@@ -1,0 +1,40 @@
+# Build outputs
+target/
+build/
+runtime/build/
+*.pdb
+*.obj
+*.ilk
+*.exp
+*.lib
+
+# Generated reports / caches (may contain game-derived data)
+report.json
+report.prev.json
+xcl.log
+xcl.prev.log
+crashes.log
+game_path.txt
+shader_path.txt
+pipeline_cache.bin
+progress.html
+used-pipelines.txt
+
+# Game data - never commit
+*.exe
+*.dll
+*.rpf
+*.xvc
+*.msixvc
+*.ttpf
+*.bk2
+*.awc
+*.bvh4
+*.fssm
+*.dxbc
+*.spirv
+*.spv
+
+# Local configuration
+victory.toml
+*.local

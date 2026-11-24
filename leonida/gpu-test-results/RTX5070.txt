@@ -1,0 +1,38 @@
+GPU:        NVIDIA GeForce RTX 5070 (Blackwell, PCI 10de:2f04)
+Driver:     NVIDIA 621.14 (proprietary), Vulkan 1.4.357
+Subgroup:   32..32 (default 32)
+OS:         Windows 11 Pro, build 26200
+Commit:     d42773d0734d5fd7b3a32a1bfd536f61186322a5
+Tools:      llvm-mc 21.1.8 (AMDGPU), SPIRV-Tools v2026.4 RC2,
+            Vulkan SDK 1.4.363.0, CMake 3.31.6-msvc6,
+            MSVC 19.44.35230.0, Python 3.14.0
+CPU:        AMD Ryzen 7 7800X3D
+RAM:        31.11 GiB reported
+
+run_gpu_tests.py:
+            257/257 shaders translated and passed spirv-val in both modes.
+            Native: 197/248 passed, 49 skipped, 2 failed.
+            LEONIDA_W64_EMULATE=1: 229/248 passed, 17 skipped, 2 failed.
+
+Failed:     cs_imgload_tfe, cs_imgload_d16_tfe (both modes, known #31):
+            r32 sint (sint view): 64 bad, texel(5,3) = 2071.
+
+Skipped:    Native: 49 skipped.
+            Emulated: 17 skipped.
+
+Runtime:    RelWithDebInfo, Windows native build.
+            304 registered, 291 passed, 11 skipped,
+            1 failed, 1 disabled.
+
+Failed:     d3d12_execute_indirect_validation:
+            49 parity cases, positive GPU dispatch OK,
+            0 validation errors, 5 parity failures.
+            All five: layer=0 warp=1 hw=1 expected=0.
+            Matches the discrepancy discussed in #337 and #306.
+
+Notes:
+- ms_wave_info_s3: 4096/4096 pixels exact in both modes.
+- cs_signed_zero_nan: PASS in both modes.
+- Single baseline run performed on 2026-11-24.
+- AI-assisted test automation and report preparation.
+- Synthetic tests only; no game files used.

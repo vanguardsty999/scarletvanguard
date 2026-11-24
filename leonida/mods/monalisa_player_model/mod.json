@@ -1,0 +1,8 @@
+{
+  "name": "Mona Lisa instead of Lucia",
+  "enabled": false,
+  "game_version": "1.0.2.1",
+  "archetype_swaps": [
+    { "from": "player_story000_00", "to": "cs_monalisa", "when": "always" }
+  ]
+}

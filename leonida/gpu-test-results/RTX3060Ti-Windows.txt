@@ -1,0 +1,55 @@
+GPU:        NVIDIA GeForce RTX 3060 Ti (Ampere / GA104, 8 GB, PCI 10de:2486)
+Driver:     NVIDIA 621.14 (proprietary), Vulkan 1.4.357
+Subgroup:   32..32 (default 32)
+OS:         Windows 11 Pro, build 26200.9974
+Commit:     3aa975421d470b76da1aa986a91282c59e20d642 (main, 2026-11-24)
+Tools:      llvm-mc 23.1.6 (conda-forge llvm-tools, Windows, AMDGPU target),
+            SPIRV-Tools v2026.4 and glslang (conda-forge),
+            Khronos Vulkan-Headers fetched by CMake (no Vulkan SDK installed),
+            CMake 4.4.5 + Ninja 1.13.2, MSVC 19.44.35211 (toolset 14.44.35207),
+            Windows SDK 10.0.26100.0, Python 3.13.14
+CPU:        AMD Ryzen 5 5600X
+RAM:        31.92 GiB reported
+
+run_gpu_tests.py:
+            261/261 shaders translated and passed spirv-val in both modes.
+            Native: 203/252 passed, 49 skipped, 0 failed.
+            LEONIDA_W64_EMULATE=1: 235/252 passed, 17 skipped, 0 failed.
+
+Failed:     none in either mode.
+
+Skipped:    Native: 32 "no 64-wide (compute) subgroup on this device",
+            16 cases run by other test programs (d3d12_*_test,
+            w64_graphics.py), 1 "cannot require a 64-wide fragment subgroup".
+            Emulated: the same 16, plus the 64-wide fragment one.
+
+Runtime:    RelWithDebInfo, Windows native build (ctest -j 6).
+            307 registered and 1 disabled (gameinput: no SDL3 installed);
+            293 passed, 13 skipped, 1 failed.
+
+Runtime failures:
+- d3d12_execute_indirect_validation: 49 parity cases,
+  positive GPU dispatch OK, 0 validation errors, 5 failures.
+  All five: layer=0 warp=1 hw=1 expected=0 (issue 504). D3D12Core and
+  d3d10warp.dll are 10.0.26100.9818 here.
+
+Runtime skips (13; LEONIDA_GAME_DIR is unset and VK_LAYER_KHRONOS_validation
+is not installed on this machine):
+  shader_library_corpus, bink_decode, bink_abi, bink_play_headless,
+  bink_audio, fsr_dispatch, bvh_builder, vk_sync_validation,
+  d3d12_boot_movie, d3d12_first_light, d3d12_rgb9e5_rtv,
+  d3d12_sparse_queue_family_contract, d3d12_bindless_churn_validated.
+
+Notes:
+- wave64 VS/PS/GS on this 32-wide-subgroup device: tier A: 1, tier C: 1
+  (tier C is not exact there; see wave64_graphics_reasons in the index).
+- Built with cmake -S runtime -B <build> -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo
+  -DLEONIDA_VULKAN_HEADERS_FETCH=ON from a vcvars64 prompt, with llvm-mc,
+  spirv-as, spirv-val and glslangValidator on PATH.
+- xma_decoder not built (no cargo), GameInput shim not built (no SDL3).
+- Upload heaps in system memory (no Resizable BAR).
+- No game files involved: run_gpu_tests.py assembles its own RDNA2 fixtures
+  with llvm-mc and runs the translated SPIR-V on the Vulkan device.
+- AI-assisted (Claude Code): built main and ran ctest and run_gpu_tests.py,
+  native and under LEONIDA_W64_EMULATE=1, on the owner's machine. The numbers
+  are the runners' own output. No game data, nothing online.

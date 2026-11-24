@@ -1,0 +1,153 @@
+<Window x:Class="RpfPreview.App.MainWindow"
+ xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+ xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+ xmlns:local="clr-namespace:RpfPreview.App"
+ Title="rpf9-explorer 1.2" Width="1500" Height="900" MinWidth="1150" MinHeight="700"
+ Background="#F3F3F3" Foreground="#202020" FontFamily="Segoe UI" FontSize="12"
+ WindowStartupLocation="CenterScreen" AllowDrop="True" Drop="Window_Drop"
+ DragOver="Window_DragOver" Loaded="Window_Loaded">
+ <Window.Resources><local:ModelAssemblySelectionConverter x:Key="ModelAssemblySelection"/></Window.Resources>
+ <Window.InputBindings><KeyBinding Key="O" Modifiers="Control" Command="{Binding OpenCommand}"/><KeyBinding Key="S" Modifiers="Control" Command="{Binding SaveCommand}"/></Window.InputBindings>
+ <DockPanel>
+  <Menu DockPanel.Dock="Top" Background="#FAFAFA" Padding="2">
+   <MenuItem Header="_File">
+    <MenuItem Header="_Open archive…" InputGestureText="Ctrl+O" Command="{Binding OpenCommand}"/>
+    <MenuItem Header="Open _folder…" Click="OpenFolder_Click"/>
+    <MenuItem Header="Open _workspace…" Click="OpenWorkspace_Click"/>
+    <MenuItem Header="_Save workspace and edits…" InputGestureText="Ctrl+S" Command="{Binding SaveCommand}"/>
+    <MenuItem Header="Clear loaded sources" Click="ClearWorkspace_Click"/>
+    <MenuItem Header="Save inspection _report…" Click="SaveReport_Click"/>
+    <Separator/>
+    <MenuItem Header="Open replacement _project…" Click="OpenReplacementProject_Click"/>
+    <MenuItem Header="Save workspace as…" Click="NewReplacementProject_Click"/>
+    <Separator/><MenuItem Header="E_xit" Click="Exit_Click"/>
+   </MenuItem>
+   <MenuItem Header="_Playback">
+    <MenuItem Header="Play / pause" Click="PlayPause_Click"/>
+    <MenuItem Header="Stop" Click="StopVideo_Click"/>
+    <MenuItem Header="Next frame" Click="StepVideo_Click"/>
+    <Separator/><MenuItem Header="Full screen" Click="Fullscreen_Click"/>
+   </MenuItem>
+  </Menu>
+  <Border DockPanel.Dock="Top" Background="#FAFAFA" BorderBrush="#D2D2D2" BorderThickness="0,0,0,1" Padding="8,5">
+   <StackPanel Orientation="Horizontal">
+    <Button x:Name="OpenButton" Content="Open…" Click="Open_Click" ToolTip="Open archive (Ctrl+O)" Margin="0,0,12,0"/>
+    <Button x:Name="OpenFolderButton" Content="Open folder…" Click="OpenFolder_Click" Margin="0,0,6,0"/>
+    <Button x:Name="SaveWorkspaceButton" Content="Save workspace…" Click="SaveWorkspace_Click" IsEnabled="False" Margin="0,0,14,0"/>
+    <Button x:Name="ExtractSelectedButton" Content="Extract selected…" Click="ExtractSelected_Click" IsEnabled="False" ToolTipService.ShowOnDisabled="True" Margin="0,0,6,0"/>
+    <Button x:Name="ExtractAllButton" Content="Extract all…" Click="ExtractAll_Click" IsEnabled="False"/>
+    <Button x:Name="ScanArchiveButton" Content="Scan entire archive…" Click="ScanArchive_Click" IsEnabled="False" Margin="18,0,0,0" ToolTip="Read the whole RPF9 file and cache supported model, texture and audio payloads. The original directory remains undecoded."/>
+    <Button x:Name="StageReplacementButton" Content="Stage replacement…" Click="StageReplacement_Click" IsEnabled="False" Margin="18,0,0,0" ToolTip="Import a replacement into a separate project; RPF9 archive writing is not decoded yet."/>
+    <TextBlock x:Name="ReplacementProjectText" Text="" VerticalAlignment="Center" Margin="10,0,0,0" Foreground="#606060" TextTrimming="CharacterEllipsis" MaxWidth="200"/>
+   </StackPanel>
+  </Border>
+  <Border DockPanel.Dock="Top" BorderBrush="#D2D2D2" BorderThickness="0,0,0,1" Padding="10,7" Background="White">
+   <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+    <TextBlock x:Name="ArchiveNameText" Text="No archive open" FontWeight="SemiBold" VerticalAlignment="Center" Margin="0,0,14,0"/>
+    <TextBlock x:Name="ArchivePathText" Grid.Column="1" Text="Open archives, texture pools or a folder." Foreground="#606060" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+    <StackPanel Grid.Column="2" Orientation="Horizontal"><TextBlock x:Name="ArchiveStatsText" Foreground="#606060" VerticalAlignment="Center" Margin="12,0"/><Border x:Name="FormatBadge" Visibility="Collapsed"><TextBlock x:Name="FormatText" VerticalAlignment="Center"/></Border></StackPanel>
+   </Grid>
+  </Border>
+  <Border x:Name="NoticeBorder" DockPanel.Dock="Top" Visibility="Collapsed" Background="#FFF8DC" BorderBrush="#E6D9A7" BorderThickness="0,0,0,1" Padding="10,7">
+   <TextBlock x:Name="NoticeText" TextTrimming="CharacterEllipsis" ToolTip="{Binding Text, RelativeSource={RelativeSource Self}}" Foreground="#68541E"/>
+  </Border>
+  <StatusBar DockPanel.Dock="Bottom" Background="#F3F3F3" BorderBrush="#D2D2D2" BorderThickness="0,1,0,0" Padding="6,3">
+   <StatusBarItem HorizontalContentAlignment="Stretch"><TextBlock x:Name="StatusText" Text="Ready" TextTrimming="CharacterEllipsis" MaxWidth="1050"/></StatusBarItem>
+   <StatusBarItem><ProgressBar x:Name="WorkProgress" Visibility="Collapsed" Width="160" Height="12"/></StatusBarItem>
+   <StatusBarItem><Button x:Name="CancelButton" Content="Cancel" Click="Cancel_Click" Visibility="Collapsed" Padding="10,2" MinHeight="22"/></StatusBarItem>
+  </StatusBar>
+  <Grid>
+   <Grid x:Name="ArchiveWorkspace" Visibility="Collapsed">
+    <Grid.ColumnDefinitions><ColumnDefinition Width="170" MinWidth="120"/><ColumnDefinition Width="5"/><ColumnDefinition Width="5*" MinWidth="300"/><ColumnDefinition Width="5"/><ColumnDefinition Width="7*" MinWidth="440"/></Grid.ColumnDefinitions>
+    <DockPanel Background="White">
+     <Border DockPanel.Dock="Top" BorderBrush="#DDD" BorderThickness="0,0,0,1" Padding="9,8"><TextBlock Text="Sources and textures"/></Border>
+     <TreeView x:Name="FolderTree" BorderThickness="0" Padding="4" SelectedItemChanged="FolderTree_SelectedItemChanged" VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.VirtualizationMode="Recycling"/>
+    </DockPanel>
+    <GridSplitter Grid.Column="1" HorizontalAlignment="Stretch" Background="#E5E5E5"/>
+    <Grid Grid.Column="2" Background="White">
+     <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+     <StackPanel Margin="8,6">
+      <DockPanel Margin="0,0,0,6"><Button x:Name="UpFolderButton" Content="Up" Click="UpFolder_Click" Padding="7,2" Margin="0,0,7,0"/><TextBlock x:Name="FolderPathText" Text="All sources" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/></DockPanel>
+      <DockPanel><ComboBox x:Name="AssetTypeFilter" DockPanel.Dock="Left" Width="102" SelectedIndex="0" SelectionChanged="WorkspaceFilter_Changed" Margin="0,0,6,0"><ComboBoxItem Content="All assets" Tag="all"/><ComboBoxItem Content="Images" Tag="image"/><ComboBoxItem Content="Models" Tag="model"/><ComboBoxItem Content="Audio" Tag="audio"/><ComboBoxItem Content="Shaders" Tag="shader"/></ComboBox><CheckBox x:Name="ThumbnailsCheckBox" DockPanel.Dock="Right" Content="Thumbnails" Checked="ThumbnailMode_Changed" Unchecked="ThumbnailMode_Changed" VerticalAlignment="Center" Margin="7,0,0,0"/><TextBox x:Name="SearchBox" MaxLength="1024" TextChanged="SearchBox_TextChanged" ToolTip="Words or phrases; type:image format:bc7 width:1024 source:textures key:... -normal" AutomationProperties.Name="Search all loaded assets" MinWidth="70"/></DockPanel>
+      <StackPanel Orientation="Horizontal" Margin="0,6,0,0"><CheckBox x:Name="AvailableOnlyCheckBox" Content="Available only" IsChecked="False" Checked="AvailableOnly_Changed" Unchecked="AvailableOnly_Changed" VerticalAlignment="Center"/><CheckBox x:Name="SearchAllSourcesCheckBox" Content="Search all sources" IsChecked="True" Checked="AvailableOnly_Changed" Unchecked="AvailableOnly_Changed" VerticalAlignment="Center" Margin="14,0,0,0"/></StackPanel>
+     </StackPanel>
+     <DataGrid x:Name="FilesGrid" Grid.Row="1" AutoGenerateColumns="False" IsReadOnly="True" CanUserAddRows="False" CanUserDeleteRows="False" CanUserResizeRows="False" RowHeight="28" HeadersVisibility="Column" GridLinesVisibility="None" BorderBrush="#DDD" BorderThickness="0,1,0,0" Background="White" RowBackground="White" AlternatingRowBackground="#FAFAFA" RowHeaderWidth="0" SelectionMode="Extended" SelectionUnit="FullRow" SelectionChanged="FilesGrid_SelectionChanged" MouseDoubleClick="FilesGrid_DoubleClick" EnableRowVirtualization="True" EnableColumnVirtualization="True" ScrollViewer.CanContentScroll="True" VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.VirtualizationMode="Recycling">
+      <DataGrid.ContextMenu><ContextMenu><MenuItem Header="Add selected model parts" Command="{Binding PlacementTarget.DataContext.AddModelPartsCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"/><MenuItem Header="Preview queued parts" Command="{Binding PlacementTarget.DataContext.PreviewModelPartsCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"/><MenuItem Header="Clear parts queue" Command="{Binding PlacementTarget.DataContext.ClearModelPartsCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"/><Separator/><MenuItem Header="Preview selected models together (experimental)" Click="PreviewTogether_Click" ToolTip="Select two or more model rows with Ctrl or Shift. Their source coordinates are retained."/></ContextMenu></DataGrid.ContextMenu>
+      <DataGrid.RowStyle><Style TargetType="DataGridRow"><Setter Property="ToolTip" Value="{Binding EntryToolTip}"/><Style.Triggers><DataTrigger Binding="{Binding Entry.CanExtract}" Value="False"><Setter Property="Foreground" Value="#777777"/></DataTrigger></Style.Triggers></Style></DataGrid.RowStyle>
+      <DataGrid.Columns>
+       <DataGridTextColumn Header="Name" Binding="{Binding DisplayName}" Width="*" MinWidth="130"/>
+       <DataGridTextColumn Header="Type" Binding="{Binding TypeLabel}" Width="110"/>
+       <DataGridTextColumn Header="Source" Binding="{Binding SourceLabel}" Width="100"/>
+       <DataGridTextColumn Header="Change" Binding="{Binding ChangeLabel}" Width="65"/>
+       <DataGridTextColumn Header="Size" Binding="{Binding SizeLabel}" SortMemberPath="SortSize" Width="85"/>
+       <DataGridTextColumn Header="Offset" Binding="{Binding OffsetLabel}" SortMemberPath="Entry.Offset" Width="94"/>
+      </DataGrid.Columns>
+     </DataGrid>
+     <ListBox x:Name="ImageGallery" SelectionMode="Extended" Grid.Row="1" Visibility="Collapsed" BorderThickness="0,1,0,0" BorderBrush="#DDD" Background="White" SelectionChanged="Gallery_SelectionChanged" ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+      <ListBox.ItemsPanel><ItemsPanelTemplate><WrapPanel/></ItemsPanelTemplate></ListBox.ItemsPanel>
+      <ListBox.ItemTemplate><DataTemplate><StackPanel Width="154" Margin="4" ToolTip="{Binding EntryToolTip}"><Border Width="150" Height="112" Background="#EEEEEE" BorderBrush="#DDD" BorderThickness="1"><Grid><TextBlock Text="{Binding ThumbnailStatus}" Foreground="#777" HorizontalAlignment="Center" VerticalAlignment="Center" TextWrapping="Wrap" Margin="8"/><Image Source="{Binding Thumbnail}" Stretch="Uniform"/></Grid></Border><TextBlock Text="{Binding DisplayName}" Margin="0,4,0,0" TextWrapping="Wrap" MaxHeight="34"/><TextBlock Text="{Binding ImageDetails}" Foreground="#666" FontSize="10" TextTrimming="CharacterEllipsis"/><TextBlock Text="{Binding SourceLabel}" Foreground="#777" FontSize="10" TextTrimming="CharacterEllipsis"/></StackPanel></DataTemplate></ListBox.ItemTemplate>
+     </ListBox>
+     <ScrollViewer x:Name="UnsupportedPanel" Grid.Row="1" Visibility="Collapsed" Padding="18" VerticalScrollBarVisibility="Auto"><StackPanel>
+      <TextBlock Text="Archive contents unavailable" FontSize="17" FontWeight="SemiBold" Margin="0,0,0,12"/>
+      <TextBlock x:Name="UnsupportedDetailText" TextWrapping="Wrap" Margin="0,0,0,16"/>
+      <Button Content="Save inspection report…" Click="SaveReport_Click" HorizontalAlignment="Left" Margin="0,0,0,20"/>
+      <TextBlock Text="Header information" FontWeight="SemiBold" Margin="0,0,0,8"/>
+      <TextBlock x:Name="HeaderMetadataText" FontFamily="Consolas" FontSize="11" TextWrapping="Wrap"/>
+     </StackPanel></ScrollViewer>
+     <Border Grid.Row="2" BorderBrush="#DDD" BorderThickness="0,1,0,0" Padding="8,5"><StackPanel><TextBlock x:Name="FileCountText" Text="0 files" Foreground="#606060"/><WrapPanel Margin="0,5,0,0"><Button x:Name="PreviewTogetherButton" Content="Preview together" Click="PreviewTogether_Click" Padding="8,3" IsEnabled="{Binding SelectedItems.Count, ElementName=FilesGrid, Converter={StaticResource ModelAssemblySelection}}" ToolTip="Experimental static assembly of selected model components in their original coordinates"/><TextBlock Text="Ctrl-click model parts to combine" Foreground="#707070" FontSize="10" VerticalAlignment="Center" Margin="8,0,0,0"/></WrapPanel><WrapPanel Margin="0,5,0,0"><Button Content="Add selected parts" Command="{Binding AddModelPartsCommand}" Padding="7,3" ToolTip="Keep one or more selected model components while you search for additional parts"/><TextBlock x:Name="ModelPartsQueueCount" Text="Parts: 0 / 64" Foreground="#606060" FontSize="11" VerticalAlignment="Center" Margin="8,0"/><Button Content="Preview queued parts" Command="{Binding PreviewModelPartsCommand}" Padding="7,3" Margin="0,0,5,0"/><Button Content="Clear parts" Command="{Binding ClearModelPartsCommand}" Padding="7,3"/></WrapPanel><StackPanel x:Name="GalleryPaging" Orientation="Horizontal" Visibility="Collapsed" Margin="0,4,0,0"><Button Content="Previous" Click="PreviousImagePage_Click" Padding="8,2"/><TextBlock x:Name="ImagePageText" Text="" VerticalAlignment="Center" Margin="8,0"/><Button Content="Next" Click="NextImagePage_Click" Padding="8,2"/></StackPanel></StackPanel></Border>
+    </Grid>
+    <GridSplitter Grid.Column="3" HorizontalAlignment="Stretch" Background="#E5E5E5"/>
+    <Grid Grid.Column="4" Background="White">
+     <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+     <StackPanel Margin="10,8"><TextBlock x:Name="PreviewNameText" Text="Select a file" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/><TextBlock x:Name="PreviewMetaText" Text="" Foreground="#606060" FontSize="11" Margin="0,4,0,0" TextWrapping="Wrap"/>
+      <WrapPanel x:Name="ReplacementControls" Visibility="Collapsed" Margin="0,7,0,0">
+       <Button Content="Original" Click="PreviewOriginal_Click" Padding="8,3" Margin="0,0,5,0"/>
+       <Button Content="Staged replacement" Click="PreviewReplacement_Click" Padding="8,3" Margin="0,0,5,0"/>
+       <Button Content="Remove replacement" Click="RemoveReplacement_Click" Padding="8,3"/>
+       <Button x:Name="BuildNativeTextureButton" Content="Build native texture…" Click="BuildNativeTexture_Click" Padding="8,3" Margin="5,0,0,0" Visibility="Collapsed" ToolTip="Create a re-tiled decoded resource bundle for an exactly compatible DDS; this does not rewrite RPF9."/>
+       <Button x:Name="ExportPoolCopyButton" Content="Export pool copy (experimental)…" Click="ExportPoolCopy_Click" Padding="8,3" Margin="5,0,0,0" Visibility="Collapsed" ToolTip="Save a modified RDS5 pool copy for a compatible complete-mip DDS. Original metadata is retained; game integrity and compatibility are unverified."/>
+      </WrapPanel>
+     </StackPanel>
+     <TabControl x:Name="PreviewTabs" Grid.Row="1" Margin="5,0,5,0" Background="White" BorderBrush="#D2D2D2">
+      <TabItem x:Name="TextTab" Header="Text"><TextBox x:Name="TextPreview" IsReadOnly="True" BorderThickness="0" FontFamily="Consolas" FontSize="12" Padding="10" TextWrapping="NoWrap" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto" VerticalContentAlignment="Top"/></TabItem>
+      <TabItem x:Name="ImageTab" Header="Image" IsEnabled="False">
+       <Grid><Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+        <DockPanel x:Name="AssetSelectorBar" Visibility="Collapsed" Margin="7,5">
+         <Button x:Name="AssetExportButton" DockPanel.Dock="Right" Content="Export DDS…" Click="AssetExport_Click" Margin="6,0,0,0" Padding="8,3"/>
+         <ComboBox x:Name="AssetSliceSelector" DockPanel.Dock="Right" Width="115" Visibility="Collapsed" SelectionChanged="AssetSliceSelector_SelectionChanged" Margin="6,0,0,0" VerticalContentAlignment="Center" AutomationProperties.Name="Texture slice or cube face"/>
+         <ComboBox x:Name="AssetSelector" DisplayMemberPath="Label" SelectionChanged="AssetSelector_SelectionChanged" MinWidth="120" VerticalContentAlignment="Center" AutomationProperties.Name="Texture or sound stream"/>
+        </DockPanel>
+        <Grid Grid.Row="1" Background="#101010" ClipToBounds="True"><Image x:Name="ImagePreview" Stretch="Uniform" MouseLeftButtonDown="VideoSurface_MouseLeftButtonDown"/></Grid>
+        <StackPanel x:Name="VideoControls" Grid.Row="2" Visibility="Collapsed" Background="#F5F5F5">
+         <Grid Margin="8,6,8,0"><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+          <Slider x:Name="SeekSlider" Minimum="1" Maximum="2" Value="1" IsMoveToPointEnabled="True" ValueChanged="SeekSlider_ValueChanged" PreviewMouseLeftButtonDown="SeekSlider_MouseDown" PreviewMouseLeftButtonUp="SeekSlider_MouseUp" PreviewKeyUp="SeekSlider_KeyUp" AutomationProperties.Name="Movie position" VerticalAlignment="Center" Margin="0,0,10,0"/>
+          <TextBlock x:Name="PlaybackTimeText" Grid.Column="1" Text="00:00 / 00:00" FontFamily="Consolas" FontSize="11" VerticalAlignment="Center"/>
+         </Grid>
+         <Grid Margin="8,5,8,8"><Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+          <Button x:Name="PlayPauseButton" Content="Play" Click="PlayPause_Click" Width="60" ToolTip="Play or pause" Margin="0,0,4,0"/>
+          <Button Grid.Column="1" Content="Stop" Click="StopVideo_Click" Padding="8,4" Margin="0,0,4,0"/>
+          <Button x:Name="StepVideoButton" Grid.Column="2" Content="Step" Click="StepVideo_Click" Padding="8,4" ToolTip="Advance one frame"/>
+          <CheckBox x:Name="LoopCheckBox" Grid.Column="3" Content="Loop" Click="Loop_Click" VerticalAlignment="Center" Margin="12,0,6,0"/>
+          <StackPanel Grid.Column="4" Orientation="Horizontal" VerticalAlignment="Center"><TextBlock x:Name="AudioLabel" Text="Volume" VerticalAlignment="Center" FontSize="11" Margin="0,0,4,0"/><Slider x:Name="VolumeSlider" Minimum="0" Maximum="100" Value="60" ValueChanged="VolumeSlider_ValueChanged" Width="65" AutomationProperties.Name="Volume"/></StackPanel>
+          <Button x:Name="FullscreenButton" Grid.Column="5" Content="Full screen" Click="Fullscreen_Click" Padding="8,4" Margin="10,0,0,0"/>
+         </Grid>
+        </StackPanel>
+       </Grid>
+      </TabItem>
+      <TabItem x:Name="ModelTab" Header="Model" IsEnabled="False"><DockPanel>
+       <StackPanel DockPanel.Dock="Bottom" Margin="7,2,7,6"><TextBlock x:Name="ModelAssemblyBanner" Visibility="Collapsed" TextWrapping="Wrap" Foreground="#68541E" Background="#FFF8DC" Padding="7" Margin="0,0,0,5"/><WrapPanel HorizontalAlignment="Right"><Button Content="Preview selected together" Click="PreviewTogether_Click" Padding="9,3" Margin="0,0,6,0" IsEnabled="{Binding SelectedItems.Count, ElementName=FilesGrid, Converter={StaticResource ModelAssemblySelection}}"/><Button Content="Export OBJ…" Click="ModelExport_Click" Padding="9,3"/></WrapPanel></StackPanel>
+       <local:ModelViewport x:Name="ModelPreview"/>
+      </DockPanel></TabItem>
+      <TabItem x:Name="HexTab" Header="Hex"><TextBox x:Name="HexPreview" IsReadOnly="True" BorderThickness="0" FontFamily="Consolas" FontSize="11" Padding="10" TextWrapping="NoWrap" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto" VerticalContentAlignment="Top"/></TabItem>
+     </TabControl>
+     <TextBlock x:Name="PreviewFootnoteText" Grid.Row="2" Text="" Foreground="#707070" FontSize="11" Margin="10,7" TextWrapping="Wrap"/>
+    </Grid>
+   </Grid>
+   <Border x:Name="DropZone" Background="White"><StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" MaxWidth="500">
+    <TextBlock Text="Open an archive" FontSize="22" Margin="0,0,0,12"/>
+    <TextBlock Text="Drop an RPF, ZIP or TTPF file here, or use File → Open.&#10;Select a file to preview it before extracting." Foreground="#606060" LineHeight="22" Margin="0,0,0,20"/>
+    <Button Content="Open archive…" Click="Open_Click" HorizontalAlignment="Left"/>
+   </StackPanel></Border>
+  </Grid>
+ </DockPanel>
+</Window>

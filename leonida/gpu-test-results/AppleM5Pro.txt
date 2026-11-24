@@ -1,0 +1,29 @@
+GPU:        Apple M5 Pro (Apple GPU, 16 cores, Metal 4), subgroup 4..32
+Driver:     MoltenVK 1.4.2 (Homebrew bottle), Vulkan 1.4.357
+Subgroup:   4..32 (default 32; subgroupSizeControl without a required size; no native 64-wide, no mesh,
+            no shaderFloat64, no geometry stage, no PerVertexKHR)
+OS:         macOS 26.7.3 (25G342), arm64
+Commit:     d42773d07 (main, 2026-11-24)
+Tools:      llvm-mc 23.1.6 (Homebrew, AMDGPU target), SPIRV-Tools v2026.4, Apple clang 21.0.0,
+            CMake 4.5.1, Python 3.15.2
+build.py:   280 shaders: 280 translated, 280 pass spirv-val (six mesh fixtures not built: no VK_EXT_mesh_shader)
+check.py:   175 of 219 pass, 39 skipped, 5 failed
+run_gpu_tests.py: 183/248 passed, 61 skipped, 4 failed
+            214/248 passed, 30 skipped, 4 failed (LEONIDA_W64_EMULATE=1)
+ctest:      72/72 passed, 2 skipped (shader_library_corpus, vk_sync_validation)
+Failed:     cs_fma_fused: word 7 (f16) reads 0x00000000, want 0x00007351. The known MoltenVK 1.4.2 row
+            of docs/testing.md, and in the macOS job's EXPECTED_FAILURES.
+            cs_imgload_tfe and cs_imgload_d16_tfe: vk_store_test reports
+            "r32 sint (sint view): 64 bad, texel(5,3) = 2071" where 71 is expected. Pass with #291 on
+            this machine; fail identically on main here.
+            ps_imgatomic: flake on MoltenVK, 11 of 20 single runs fail with 1-5 of 256 image-atomic
+            texels wrong while the render target stays exact; the same binary and SPIR-V pass 10/10
+            on KosmicKrisp (Mesa 26.3.1). Not in the Known problems table; #543.
+check.py only: ps_ij_computed and ps_interp_f16_high report "vk_harness failed or returned no pixels":
+            the device has no PerVertexKHR inputs, which run_gpu_tests.py covers with
+            --f16-interp-fallback by itself, and ps_ij_computed would also need the geometry-stage
+            bary-fallback, which Metal does not expose.
+Skipped:    31 "full 64-wide compute subgroups unavailable" (the wave64 compute tests), two wave64 pixel
+            tests on a 4..32 fragment subgroup, two Float64 fixtures (no shaderFloat64), three mesh
+            fixtures and the "64 lanes on request" test. run_gpu_tests.py's 61 skips are those plus the
+            fixtures the d3d12_* tests run.

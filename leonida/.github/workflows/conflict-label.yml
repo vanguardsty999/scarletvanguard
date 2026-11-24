@@ -1,0 +1,40 @@
+name: Needs rebase label
+
+# Labels the open pull requests that conflict with main `needs rebase` and unlabels them once they merge again
+# (tools/pr_conflict_label.py). A push to main can make any open pull request conflict, so it checks all of them;
+# the hourly run catches a rebase and any merge GitHub had not computed yet.
+#
+# There is no pull request trigger. One run per push to every pull request queued hundreds of runs here, ahead of
+# the builds and tests that share the repository's runners; checking all of them per push to main and per hour keeps
+# at most one run waiting. The job checks out main and reads only the GitHub API: no pull request code runs.
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: '17 * * * *'
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  # One run at a time and one waiting; a newer push replaces the waiting one, since each run checks every pull request.
+  group: conflict-label
+  cancel-in-progress: false
+
+jobs:
+  label:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Label conflicting pull requests
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python3 -I tools/pr_conflict_label.py --repo "$GITHUB_REPOSITORY"

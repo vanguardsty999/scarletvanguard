@@ -1,0 +1,49 @@
+GPU:        Intel Graphics (Meteor Lake-P, Xe-LPG, PCI 8086:7d45, integrated), Core Ultra 5 135U
+Driver:     ANV (Mesa 26.2.7), Vulkan 1.4.354
+Subgroup:   8..32 (minSubgroupSize 8, maxSubgroupSize 32; subgroupSizeControl, computeFullSubgroups)
+OS:         Fedora Linux 45, kernel 7.3.4-300.fc45.x86_64
+Commit:     84347bbb6 (main, 2026-11-24, after #24)
+Tools:      llvm-mc 23.1.5 (Fedora, AMDGPU target), SPIRV-Tools v2026.2, CMake 4.3.0 + Ninja 1.13.2,
+            GCC 16.2.1, Python 3.15.2, Vulkan headers and loader 1.4.350 (Fedora)
+build.py:   279 shaders: 279 translated, 279 pass spirv-val
+            wave64 VS/PS/GS on 32-wide subgroups: tier A: 11, tier B: 8, tier C: 13
+            not built: the six ms_* fixtures that need a DXBC container (run_gpu_tests.py
+            builds them) and ps_ij_computed (no PerVertexKHR here)
+check.py:   177 of 219 pass, 40 skipped, 2 failed
+run_gpu_tests.py: 257 shaders: 256 translated, 256 pass spirv-val
+            native:                 194/248 passed, 52 skipped, 2 failed
+            LEONIDA_W64_EMULATE=1:  226/248 passed, 20 skipped, 2 failed
+Failed:     cs_imgload_tfe and cs_imgload_d16_tfe, in every run: "r32 sint (sint view): 64 bad,
+            texel(5,3) = 2071", the expected 71 plus the 2000 the fixture seeds the tfe status
+            VGPR with. That is #31, the same words as the 780M. With #98 applied on this same
+            main both pass, native and emulated (2/2 each).
+Skipped:    native 52 = 16 documented "run by d3d12_*_test / w64_graphics.py" cases
+            (cs_buf_counter, cs_buf_typed, cs_m4_fill, cs_m4_indirect, ps_live_width, ps_m15,
+            ps_m2, ps_m2_array, ps_m2_literal, ps_m2_uoff, ps_m3, ps_m3_post, ps_m3_query,
+            vs_m15, vs_m2, vs_m3)
+            + 32 that need a 64-wide subgroup (31 compute and ms_w64x_ballot), which this
+            device does not have; LEONIDA_W64_EMULATE=1 runs all 32 and all 32 pass
+            + 4 the device cannot run as written, in both modes: ps_bitmask_perm and
+            ps_vcmpx_forms (fragment subgroups narrower than 32 on an 8..32 device),
+            ps_w64x_readlane (no 64-wide fragment subgroup can be required) and
+            ps_ij_computed (no VK_KHR_fragment_shader_barycentric, so no PerVertexKHR).
+Notes:
+- Built with cmake -S runtime -B runtime/build/linux -G Ninja -DCMAKE_BUILD_TYPE=Release, the
+  distribution's Vulkan headers; LEONIDA_VK_DEVICE=Intel picks the GPU over llvmpipe.
+- Every other case was exact: 79 cases read 4096/4096 pixels back, the compute words exact. The five mesh
+  fixtures that run on 32 lanes pass (ms_clip, ms_f16_pack, ms_tri, ms_v5_workgroup,
+  ms_wave_info_s3), as does cs_w32_exec_computed (259 1028 3088 7682 512 4100 0 3) now that
+  #24 is on main; emulated, cs_w64_exec_computed passes too (291 1028 11264 771 8192 4132 0 3).
+- cs_signed_zero_nan and cs_fmt_int_narrow (136/136 words) pass here. The draft #84 records the
+  four fixtures it names on an Arc 140T (ANV 25.2.8): on this Intel GPU those four are exactly
+  the two translator fixes (#24, merged, and #98), not a driver difference.
+- The seven texture fixtures of the TEST-399 row in docs/testing.md (cs_sample_lz_int_d16,
+  ps_sample_implicit_sint, ps_ssharp, ps_tex, ps_texture_mip0, ps_texture_sample,
+  ps_texture_sample_d16) pass here. That row lists Mesa 26.2.7 as crashing on Iris Xe (ADL
+  GT2); with Fedora's Mesa 26.2.7 on Meteor Lake none of the seven crashes. Not looked into
+  further: Fedora's build may carry a fix, or the GPU generation may matter.
+- The first Intel entry in gpu-test-results/. With no 64-wide subgroup on this device, every
+  wave64 compute and mesh test ran only under LEONIDA_W64_EMULATE=1.
+- AI-assisted (Claude Code): built main at 84347bbb6, ran build.py, check.py and
+  run_gpu_tests.py native and under LEONIDA_W64_EMULATE=1 on this GPU, and reran the tfe pair
+  with #98 applied.

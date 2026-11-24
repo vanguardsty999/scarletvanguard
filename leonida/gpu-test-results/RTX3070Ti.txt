@@ -1,0 +1,28 @@
+GPU:        NVIDIA GeForce RTX 3070 Ti (Ampere / GA104, PCI 10de:2482), subgroup 32..32
+Driver:     NVIDIA 621.24 (proprietary), Vulkan 1.4.357
+Subgroup:   32..32 (minSubgroupSize 32, maxSubgroupSize 32)
+OS:         Windows 11, 10.0.26200
+Commit:     d42773d0734d5fd7b3a32a1bfd536f61186322a5 (main, 2026-11-24)
+Tools:      llvm-mc 23.1.6 (conda-forge llvm-tools, Windows, AMDGPU target), SPIRV-Tools v2026.4,
+            CMake 3.31.6 + MSVC 14.44 (Visual Studio 17 2022, RelWithDebInfo), Python 3.12
+run_gpu_tests.py: 257 shaders: 257 translated, 257 pass spirv-val
+            native:                 197/248 passed, 49 skipped, 2 failed
+            LEONIDA_W64_EMULATE=1:  229/248 passed, 17 skipped, 2 failed
+Failed:     cs_imgload_tfe, cs_imgload_d16_tfe (native and emulated alike): exit 1, "r32 sint (sint view):
+            64 bad, texel(5,3) = 2071"; the tfe status VGPR is read but never written (#31) - the same
+            pair, and the same numbers, as the Radeon 780M and RTX 4070 records. Not rerun with #98.
+Skipped:    native: 31 "no 64-wide compute subgroup on this device" and 1 "cannot require a 64-wide
+            fragment subgroup" (the wave64 fixtures, which the emulated run covers), plus the 16
+            documented "run by d3d12_*_test / w64_graphics.py" cases.
+            Emulated: the same 16, plus the 64-wide fragment one.
+Notes:
+- Built with cmake -S runtime -B runtime/build -G "Visual Studio 17 2022" -A x64 and
+  cmake --build runtime/build --config RelWithDebInfo; this is the Windows MSVC path (gta6rt and the
+  shims are Windows-only).
+- wave64 VS/PS/GS on this 32-wide-subgroup device: tier A: 1, tier C: 1 (tier C is not exact there;
+  see wave64_graphics_reasons in the index).
+- No game files involved: run_gpu_tests.py assembles its own RDNA2 fixtures with llvm-mc and runs the
+  translated SPIR-V on the Vulkan device.
+- AI-assisted (Hermes, deepseek-v4.1-flash): built main, ran run_gpu_tests.py native and under
+  LEONIDA_W64_EMULATE=1, and collected the header data on the owner's machine. The numbers above are
+  the runner's own output. No game data, nothing online.

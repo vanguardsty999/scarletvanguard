@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Wave checkpoint report</title>
+<style>
+  :root { color-scheme: dark; font: 15px/1.5 system-ui, sans-serif; background: #11171d; color: #edf3f5; }
+  * { box-sizing: border-box; }
+  body { max-width: 1300px; margin: auto; padding: 28px clamp(16px, 4vw, 55px); }
+  header { border-bottom: 1px solid #33414b; margin-bottom: 24px; }
+  h1 { font-size: clamp(1.75rem, 4vw, 2.5rem); line-height: 1.15; margin: 0 0 8px; }
+  h2 { font-size: 1rem; margin: 0 0 10px; }
+  p { margin: 0 0 12px; }
+  .muted { color: #a5b6c0; }
+  .mono, code { font-family: ui-monospace, Consolas, monospace; }
+  main { display: grid; grid-template-columns: minmax(230px, 0.9fr) minmax(0, 2.1fr); gap: 22px; }
+  nav, section { min-width: 0; }
+  #steps { display: grid; gap: 5px; max-height: 67vh; overflow: auto; }
+  button, select {
+    font: inherit; color: inherit; background: #202b35; border: 1px solid #405362;
+    border-radius: 5px; padding: 6px 10px;
+  }
+  button:not(:disabled), select { cursor: pointer; }
+  button:not(:disabled):hover { background: #304451; }
+  button:disabled { opacity: .45; }
+  :focus-visible { outline: 2px solid #8be1cd; outline-offset: -2px; }
+  #steps button { text-align: left; overflow-wrap: anywhere; font-size: .84rem; }
+  #steps [aria-current] { border-color: #8be1cd; background: #25413f; }
+  #steps .mismatch { border-right: 4px solid #ffb78a; }
+  .controls { display: flex; gap: 8px 12px; flex-wrap: wrap; align-items: center; margin-bottom: 10px; }
+  #status { display: block; min-height: 2.2em; overflow-wrap: anywhere; }
+  .lanes { display: grid; grid-template-columns: repeat(auto-fit, minmax(115px, 1fr)); gap: 8px; }
+  .lane { background: #19232c; border: 1px solid #33414b; border-radius: 5px; padding: 8px 10px; }
+  .lane h3 { margin: 0; font: 600 .8rem/1.5 system-ui, sans-serif; color: #c4d4dd; }
+  .lane span { display: block; white-space: nowrap; }
+  .lane.mismatch { border-color: #ffb78a; }
+  .mismatch { color: #ffb78a; }
+  @media (max-width: 710px) { main { grid-template-columns: 1fr; } #steps { max-height: 28vh; } }
+</style>
+<body>
+  <header>
+    <h1>Wave checkpoint report</h1>
+    <p id="case" class="mono muted"></p>
+    <p class="muted">Each checkpoint re-translates a program prefix, which can lower differently from the full case. The final checkpoint runs the full case.</p>
+  </header>
+  <main>
+    <nav aria-label="Checkpoints">
+      <h2>Checkpoints</h2>
+      <div id="steps"></div>
+    </nav>
+    <section aria-label="Lane values">
+      <div class="controls">
+        <button id="prev" type="button">Previous</button>
+        <button id="next" type="button">Next</button>
+        <button id="first" type="button">First observed mismatch</button>
+        <label>Register <select id="register"></select></label>
+      </div>
+      <output id="status" aria-live="polite"></output>
+      <p class="muted">Each lane shows reference above translated SPIR-V.</p>
+      <div id="lanes" class="lanes mono"></div>
+    </section>
+  </main>
+  <noscript>Enable JavaScript to browse the locally embedded checkpoints.</noscript>
+  <script id="wave-data" type="application/json"><!-- WAVE_TRACE_DATA --></script>
+  <script>
+    const byId = id => document.getElementById(id);
+    const report = JSON.parse(byId('wave-data').textContent);
+    const registers = byId('register');
+    const hex = word => word == null ? '—' : `0x${word.toString(16).padStart(8, '0')}`;
+    let stepIndex = 0;
+
+    byId('case').textContent = `Wave${report.wave} · Seed ${report.seed} · Case ${report.case} · Max ops ${report.max_ops}`;
+    for (const name of report.columns) {
+      const option = document.createElement('option');
+      option.textContent = name;
+      registers.append(option);
+    }
+
+    const steps = report.steps.map((step, index) => {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'mono';
+      button.classList.toggle('mismatch', Boolean(step.mismatch));
+      button.textContent = index === 0 ? 'Initialized state' : `${index}  ${step.instruction}`;
+      if (step.unavailable) button.textContent += ' (unavailable)';
+      button.addEventListener('click', () => show(index));
+      byId('steps').append(button);
+      return button;
+    });
+
+    function show(index) {
+      stepIndex = index;
+      const step = report.steps[index];
+      steps.forEach((button, i) => {
+        if (i === index) button.setAttribute('aria-current', 'step');
+        else button.removeAttribute('aria-current');
+      });
+      byId('prev').disabled = index === 0;
+      byId('next').disabled = index === steps.length - 1;
+      const diff = step.mismatch;
+      const state = byId('status');
+      state.classList.toggle('mismatch', Boolean(diff));
+      if (step.unavailable) state.textContent = `Unavailable · ${step.unavailable}`;
+      else if (diff) state.textContent = `Mismatch · Lane ${diff.lane} · ${report.columns[diff.column]}`;
+      else state.textContent = 'Reference and translated values match';
+
+      const column = registers.selectedIndex;
+      const lanes = byId('lanes');
+      lanes.replaceChildren();
+      for (let lane = 0; lane < report.wave; lane++) {
+        const expected = step.reference?.[lane][column];
+        const actual = step.translated?.[lane][column];
+        const differs = step.translated !== null && expected !== actual;
+        const card = document.createElement('div');
+        card.className = differs ? 'lane mismatch' : 'lane';
+        const label = document.createElement('h3');
+        label.textContent = `Lane ${lane}${differs ? ' · Diff' : ''}`;
+        card.append(label);
+        for (const word of [expected, actual]) {
+          const value = document.createElement('span');
+          value.textContent = hex(word);
+          card.append(value);
+        }
+        lanes.append(card);
+      }
+    }
+
+    byId('prev').addEventListener('click', () => show(stepIndex - 1));
+    byId('next').addEventListener('click', () => show(stepIndex + 1));
+    registers.addEventListener('change', () => show(stepIndex));
+    byId('first').disabled = report.first_mismatch === null;
+    byId('first').addEventListener('click', () => {
+      const index = report.first_mismatch;
+      registers.selectedIndex = report.steps[index].mismatch.column;
+      show(index);
+      steps[index].scrollIntoView({block: 'nearest'});
+    });
+    show(0);
+  </script>
+</body>
+</html>

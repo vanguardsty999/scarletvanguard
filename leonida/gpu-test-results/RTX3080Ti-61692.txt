@@ -1,0 +1,46 @@
+GPU:        NVIDIA GeForce RTX 3080 Ti (Ampere), 12 GiB VRAM
+Driver:     NVIDIA 616.92 (nvidia-smi)
+Subgroup:   32..32 (reported by the locally built vk_compute_test)
+OS:         Windows 11, 26H2, build 10.0.26300.9974
+Date:       2026-11-24
+Commit:     d478a92d4d7eae1d7b512cb4553ddc4fbc300e85 (harnesses and scripts)
+Tools:      Python 3.14.3, LLVM-MinGW 20261117 UCRT x86_64 / Clang 23.1.6,
+            CMake 4.4.5, Ninja 1.13.2,
+            Khronos Vulkan-Headers d277a0a3cda9c682708c93279f0c72cd6b0ae3f3
+Scope:      ONLY tests/semantic/fixtures/disasm, the pre-disassembled synthetic subset.
+            100 listings translated and assembled in each run with tools/spirv_asm.py.
+            No llvm-mc or spirv-val was available; this is NOT a full-suite or
+            SPIR-V-validation result. No game files were used.
+build.py:   not run (--disasm-dir skips the assembler-dependent fixture build)
+check.py:   not run separately
+run_gpu_tests.py:
+            native:                 81/97 passed, 16 skipped, 0 failed; exit 0
+            LEONIDA_W64_EMULATE=1:   97/97 passed, 0 skipped, 0 failed; exit 0
+Runtime:    full Windows runtime and ctest not built or run; standalone Vulkan tools only
+
+The native skips all report "no 64-wide compute subgroup on this device":
+  cs_w64_exec_computed, cs_w64_mask_imm, cs_w64x_andn2_exec, cs_w64x_ballot,
+  cs_w64x_bpermute, cs_w64x_load_ballot_load, cs_w64x_partial, cs_w64x_permute,
+  cs_w64x_readfirstlane, cs_w64x_readlane, cs_w64x_saveexec_b64, cs_w64x_writelane,
+  cs_wave64_ballot, cs_wavemask, cs_wm_bfm64, cs_wm_half_cmp.
+All sixteen pass with LEONIDA_W64_EMULATE=1.
+
+In particular, cs_w32_exec_computed passes in both modes and cs_w64_exec_computed
+passes in emulation (native skips). This is a separate driver/commit/subset measurement
+from PR #280's 621.24 full-suite record at da60a361; the different totals cannot be used
+to infer a driver regression or a full-suite improvement. The tfe fixtures reported
+there are outside this subset.
+
+Reproduction (PowerShell, with LLVM-MinGW, CMake and Ninja on PATH):
+
+  cmake -S runtime -B runtime/build/vulkan -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER=clang++ -DLEONIDA_BUILD_WINDOWS_RUNTIME=OFF -DVulkan_INCLUDE_DIR=<Vulkan-Headers>/include
+  cmake --build runtime/build/vulkan --parallel 6 --target vk_harness vk_texture_test vk_sampler_test vk_compute_test vk_store_test vk_bindless_test
+  $env:LEONIDA_VK_DEVICE = 'RTX 3080 Ti'
+  # Native run: LEONIDA_W64_EMULATE unset.
+  python -I scripts/run_gpu_tests.py --build runtime/build/vulkan --work <native-work> --disasm-dir tests/semantic/fixtures/disasm --assembler python --require-pass
+  $env:LEONIDA_W64_EMULATE = '1'
+  python -I scripts/run_gpu_tests.py --build runtime/build/vulkan --work <emulated-work> --disasm-dir tests/semantic/fixtures/disasm --assembler python --require-pass
+
+AI-assisted: Codex prepared the local portable toolchain, built the matching programs,
+ran both modes on the contributor's GPU, and wrote this bounded result. No game data,
+shader dumps, private paths, or generated binaries are included in the contribution.

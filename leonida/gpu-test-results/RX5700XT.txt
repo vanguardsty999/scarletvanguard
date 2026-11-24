@@ -1,0 +1,38 @@
+GPU:        AMD Radeon RX 5700 XT (RDNA1 / GFX1010, Navi 10, PCI 1002:731f), subgroup 32..64
+Driver:     AMD proprietary 26.11.2 (Windows 32.0.21045.29003, driverVersion 2.0.353),
+            Vulkan 1.4.315 (loader 1.4.309)
+Subgroup:   32..64 (minSubgroupSize 32, maxSubgroupSize 64; default 64, subgroupSizeControl,
+            one required size, compute-only)
+OS:         Windows 11 Pro, 10.0.26200
+Commit:     a0e187649e6f50a9a8ea61b3dc03974070359cb1 (main of the original repository, 2026-11-23)
+Tools:      llvm-mingw 23.1.6 (clang 23.1.6), llvm-mc 23.1.6, SPIRV-Tools v2026.4,
+            CMake 4.4.5 with Ninja, Python 3.12
+run_gpu_tests.py: 247 fixtures: 246 translated, 246 pass spirv-val
+            native:                 213/241 passed, 28 skipped, 0 failed
+            LEONIDA_W64_EMULATE=1:  213/241 passed, 28 skipped, 0 failed
+Skipped:    28 skips, all documented reasons:
+            6  no VK_EXT_mesh_shader on this device (RDNA1 does not expose it),
+            5  no VK_KHR_fragment_shader_barycentric (4 fixtures read BaryCoordKHR,
+               1 needs PerVertexKHR inputs),
+            1  needs a required 64-wide fragment subgroup; this device can require one size,
+            15 run by d3d12_*_test (m2_textured 4, m3_frame 4, buffer_uav 2, m4_compute 2,
+               translated_draw 2, m2_formats 1),
+            1  run by w64_graphics.py.
+Notes:
+- Built with cmake -S runtime -B runtime/build/vulkan -G Ninja -DCMAKE_BUILD_TYPE=Release
+  -DLEONIDA_BUILD_WINDOWS_RUNTIME=OFF and -DCMAKE_EXE_LINKER_FLAGS=-static with llvm-mingw.
+  Without -static every test binary exits 0xC0000135 (DLL not found) and the suite reports
+  0 passed, so a MinGW/LLVM build needs it.
+- Also run on this card: w64_graphics.py 29 fixtures: tier A 9 ok, tier B 8 ok, tier C 12
+  skipped (tier C needs a device that can require both 64 and 32, or W64G_REF), 0 failed;
+  vk_pipeline_check.py: 246 modules ok, 236 pipelines ok, 0 failed, 10 skipped (6 mesh,
+  4 barycentric), cs 113/113 (80 wave32, 33 wave64), vs 11/11, gs 1/1, ps 111/115.
+- The runtime ctest suite on this commit has one failure outside run_gpu_tests.py:
+  vk_queue_query_sync at `line 468: progress_loss_ok` (5/5 direct runs, 4/5 through ctest).
+  It is `completed_retire_ticket()` swallowing VK_ERROR_DEVICE_LOST; see the finding on the
+  coordination issue. Fixed by the old PR #6149's hunk (then 5/5 pass, full ctest 62/64,
+  0 failed, 2 skipped).
+- build.py and check.py (the two D3D12-side columns in the table) were not run on this
+  machine; the counts here come from run_gpu_tests.py, which builds and translates the same
+  fixtures.
+- AI-assisted (OpenCode). Synthetic tests only; no game files.

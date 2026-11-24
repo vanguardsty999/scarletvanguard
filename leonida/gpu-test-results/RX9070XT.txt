@@ -1,0 +1,31 @@
+GPU:        AMD Radeon RX 9070 XT (RDNA4 / GFX1201, Navi 48, PCI 1002:7550), subgroup 32..64
+Driver:     AMD proprietary 26.11.2 (LLPC), Vulkan 1.4.359
+Subgroup:   32..64 (minSubgroupSize 32, maxSubgroupSize 64; default 64, subgroupSizeControl)
+OS:         Windows 11, 10.0.26300.9550
+Commit:     5d74c272363f2703265d44e6aaab1a1df8ddfaf3 (main, 2026-11-23)
+Tools:      llvm-mc from ROCm/AOMP 18.0-12 (LLVM 19.0.0git), SPIRV-Tools v2026.4
+            (Vulkan SDK 1.4.363.1), CMake 4.4.5, Visual Studio 17 2022 generator,
+            MSVC 19.44.35230.0, Python 3.11.9
+run_gpu_tests.py: 247 shaders: 247 translated, 247 pass spirv-val
+            native:                 224/241 passed, 16 skipped, 1 failed
+            LEONIDA_W64_EMULATE=1:  225/241 passed, 16 skipped, 0 failed
+Failed:     ms_wave_info_s3: at (0,0) got (-1.0000,-1.0000,-1.0000,-1.0000), want
+            (0.0078,0.0078,0.5,1.0). Native: 3 of 3 isolated --filter reruns failed.
+            Emulated: the one full-suite run passed it, then 1 of 3 isolated reruns
+            passed, so the emulated path is flaky here while native fails every time.
+            Same signature as #6172 / #5273 and as the RTX 4060 record (#8752), where
+            it failed 3 of 3.
+Skipped:    16 skips are the documented "run by d3d12_*_test / w64_graphics.py" cases:
+            cs_buf_counter, cs_buf_typed, cs_m4_fill, cs_m4_indirect, ps_live_width,
+            ps_m15, ps_m2, ps_m2_array, ps_m2_literal, ps_m2_uoff, ps_m3, ps_m3_post,
+            ps_m3_query, vs_m15, vs_m2, vs_m3.
+Notes:
+- Built with cmake -S runtime -B runtime/build (default Visual Studio 17 2022
+  generator) and cmake --build runtime/build --config RelWithDebInfo.
+- The suite ran on the AMD LLPC driver with the project's own vk_harness /
+  vk_compute_test / vk_store_test binaries. No implicit layer beyond the SDK's.
+- Every other pixel and compute case was exact.
+- build.py and check.py (the two D3D12-side columns in the table) were not run on
+  this machine; the counts here come from run_gpu_tests.py, which builds and
+  translates the same fixtures.
+- AI-assisted (Cline).

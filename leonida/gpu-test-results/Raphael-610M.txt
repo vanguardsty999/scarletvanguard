@@ -1,0 +1,26 @@
+GPU:        AMD Radeon 610M, Ryzen 9 7900X integrated (RDNA2 / gfx1036, Raphael, PCI 1002:164e), subgroup 32..64
+Driver:     RADV (Mesa 26.2.6-arch3.1), Vulkan 1.4.354
+Subgroup:   32..64 (minSubgroupSize 32, maxSubgroupSize 64; default 64)
+OS:         CachyOS, kernel 7.3.3-1-cachyos
+Commit:     84347bbb61ed406db10195f50d5911893b8b9a4b (main, 2026-11-24)
+Tools:      llvm-mc 23.1.4 (native, Arch package), SPIRV-Tools v2026.4, CMake 4.4.5 + Ninja 1.13.2,
+            GCC 16.2.1, Python 3.14.10
+run_gpu_tests.py: 257 shaders: 257 translated, 257 pass spirv-val
+            native:                 230/248 passed, 16 skipped, 2 failed
+            LEONIDA_W64_EMULATE=1:  230/248 passed, 16 skipped, 2 failed
+Failed:     cs_imgload_tfe, cs_imgload_d16_tfe (native and emulated alike): the tfe status VGPR is
+            read but never written, #31. With #98 (SHADER-1266, head f19ec5193) on the same build,
+            both pass natively and under LEONIDA_W64_EMULATE=1 (--filter tfe: 2/2 each).
+Skipped:    16 skips are the documented "run by d3d12_*_test / w64_graphics.py" cases:
+            cs_buf_counter, cs_buf_typed, cs_m4_fill, cs_m4_indirect, ps_live_width, ps_m15, ps_m2,
+            ps_m2_array, ps_m2_literal, ps_m2_uoff, ps_m3, ps_m3_post, ps_m3_query, vs_m15, vs_m2, vs_m3.
+Notes:
+- gfx1036 is RDNA2, the same GPU generation as the console; every wave64 fixture ran on native 64-wide
+  subgroups here. ms_wave_info_s3 passed in both runs.
+- Built with cmake -S runtime -B runtime/build -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo and
+  cmake --build runtime/build; the Linux portable subset (gta6rt and the shims are Windows-only).
+- Implicit Vulkan layers disabled (VK_LOADER_LAYERS_DISABLE='~implicit~'). Device picked with
+  VK_LOADER_DRIVERS_SELECT='*radeon*' on a machine whose main GPU is an RTX 4070 Ti (see RTX4070Ti.txt);
+  the iGPU drives no display.
+- AI-assisted (Claude Code): built main, ran run_gpu_tests.py native and emulated, and reran the two
+  failures with #98 checked out. No game files, nothing online.

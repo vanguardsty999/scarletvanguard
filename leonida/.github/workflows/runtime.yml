@@ -1,0 +1,588 @@
+# Builds the loader (runtime/) with MSVC and Vulkan headers (plus GPU tools and llvmpipe tests on Linux, and MoltenVK
+# tests on a Mac) on runtime or translator changes, so a change that breaks the C++ build or tests shows up in CI.
+name: Runtime
+
+on:
+  # What can break this build: the runtime and its vendored queue, the scripts the jobs run, this workflow, the
+  # line endings every checkout gets (.gitattributes), and everything the tools those scripts read depend on -
+  # their sibling imports, the data files they load by name (gfx10_formats.json is one a .py-only scan misses) and
+  # the hw_oracle directory. Any other file under tools/ used to start a full Windows and Wine build it cannot break
+  # (BUILD-856); paths-ignore cannot say "everything under tools/ except these", so the event lists what triggers
+  # it. tests/test_runtime_paths.py recomputes the tools/ part and fails when an entry is missing; keep the two
+  # lists identical.
+  push:
+    branches: [main]
+    paths:
+      - "runtime/**"
+      - "third_party/**"
+      - "scripts/**"
+      - ".github/workflows/runtime.yml"
+      - ".gitattributes"
+      - "tools/hw_oracle/**"
+      - "tools/bary_fallback_gs.py"
+      - "tools/cf_diff.py"
+      - "tools/cf_ref.py"
+      - "tools/cfg_structure.py"
+      - "tools/cpu_ref.py"
+      - "tools/f32_fuzz.py"
+      - "tools/file_mode.py"
+      - "tools/first_light.py"
+      - "tools/fspx_unpack.py"
+      - "tools/fssm_header.py"
+      - "tools/fssm_unpack.py"
+      - "tools/gen_d3d12_stubs.py"
+      - "tools/gfx10_formats.json"
+      - "tools/lane_masks.py"
+      - "tools/mc_command.py"
+      - "tools/mesh_compute_vs.py"
+      - "tools/native_pso_hashes.py"
+      - "tools/rdna2_decode.py"
+      - "tools/rdna2_isa_tables.py"
+      - "tools/rdna2spirv.py"
+      - "tools/replace_retry.py"
+      - "tools/report_paths.py"
+      - "tools/shader_carve.py"
+      - "tools/shader_carve_accel.py"
+      - "tools/shader_carve_native/**"
+      - "tools/shader_disasm.py"
+      - "tools/shader_ir.py"
+      - "tools/shader_meta.py"
+      - "tools/shader_stage_manifest.py"
+      - "tools/spirv_asm.py"
+      - "tools/spirv_asm_tables.py"
+      - "tools/spirv_opt.py"
+      - "tools/spirv_stubs.py"
+      - "tools/vk_subgroup_info.py"
+      - "tools/wave64_emulate_opt.py"
+      - "tools/wave64_halves.py"
+      - "tools/xdxr_bvh.py"
+  pull_request:
+    paths:
+      - "runtime/**"
+      - "third_party/**"
+      - "scripts/**"
+      - ".github/workflows/runtime.yml"
+      - ".gitattributes"
+      - "tools/hw_oracle/**"
+      - "tools/bary_fallback_gs.py"
+      - "tools/cf_diff.py"
+      - "tools/cf_ref.py"
+      - "tools/cfg_structure.py"
+      - "tools/cpu_ref.py"
+      - "tools/f32_fuzz.py"
+      - "tools/file_mode.py"
+      - "tools/first_light.py"
+      - "tools/fspx_unpack.py"
+      - "tools/fssm_header.py"
+      - "tools/fssm_unpack.py"
+      - "tools/gen_d3d12_stubs.py"
+      - "tools/gfx10_formats.json"
+      - "tools/lane_masks.py"
+      - "tools/mc_command.py"
+      - "tools/mesh_compute_vs.py"
+      - "tools/native_pso_hashes.py"
+      - "tools/rdna2_decode.py"
+      - "tools/rdna2_isa_tables.py"
+      - "tools/rdna2spirv.py"
+      - "tools/replace_retry.py"
+      - "tools/report_paths.py"
+      - "tools/shader_carve.py"
+      - "tools/shader_carve_accel.py"
+      - "tools/shader_carve_native/**"
+      - "tools/shader_disasm.py"
+      - "tools/shader_ir.py"
+      - "tools/shader_meta.py"
+      - "tools/shader_stage_manifest.py"
+      - "tools/spirv_asm.py"
+      - "tools/spirv_asm_tables.py"
+      - "tools/spirv_opt.py"
+      - "tools/spirv_stubs.py"
+      - "tools/vk_subgroup_info.py"
+      - "tools/wave64_emulate_opt.py"
+      - "tools/wave64_halves.py"
+      - "tools/xdxr_bvh.py"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  # Coalesce superseded pending pushes per branch without canceling an active main build.
+  group: runtime-${{ github.event_name }}-${{ github.event.pull_request.number || (github.event_name == 'push' && github.ref) || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    # A build with a cold sccache took 18.3 min (main, 24 Nov), which left a 20-minute job under 2 min for the
+    # whole ctest run. The ctest step bounds each test on its own, so a hung test no longer needs this to stop it.
+    timeout-minutes: 35
+    outputs:
+      wine-artifact: ${{ steps.upload-wine-artifact.outcome }}
+    env:
+      SCCACHE_GHA_ENABLED: "true"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+      - name: Set up MSVC x64 developer environment
+        shell: pwsh
+        run: |
+          $installer = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer'
+          $vswhere = Join-Path $installer 'vswhere.exe'
+          if (!(Test-Path -LiteralPath $vswhere -PathType Leaf)) {
+            throw "vswhere.exe not found at $vswhere"
+          }
+          $vs = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath | Select-Object -First 1
+          if ([string]::IsNullOrWhiteSpace($vs)) {
+            $vs = & $vswhere -latest -prerelease -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath | Select-Object -First 1
+          }
+          if ([string]::IsNullOrWhiteSpace($vs)) {
+            throw 'Visual Studio with Microsoft.VisualStudio.Component.VC.Tools.x86.x64 was not found'
+          }
+          $vcvars = Join-Path $vs.Trim() 'VC\Auxiliary\Build\vcvars64.bat'
+          if (!(Test-Path -LiteralPath $vcvars -PathType Leaf)) {
+            throw "vcvars64.bat not found at $vcvars"
+          }
+
+          $before = @{}
+          foreach ($e in Get-ChildItem Env:) {
+            $before[$e.Name.ToUpperInvariant()] = $e.Value
+          }
+
+          $dump = Join-Path $env:RUNNER_TEMP 'vcvars-env.json'
+          $cmd = Join-Path $env:RUNNER_TEMP 'run-vcvars.cmd'
+          $origPath = $env:PATH
+          $hadInstaller = @(($origPath -split ';') | Where-Object { $_.TrimEnd('\') -ieq $installer.TrimEnd('\') }).Count -gt 0
+          $env:PATH = "$origPath;$installer"
+          $env:LEONIDA_VCVARS_DUMP = $dump
+          try {
+            $batch = @(
+              '@echo off'
+              'chcp 65001 >nul'
+              "call `"$vcvars`" || exit /b 1"
+              'where cl.exe || exit /b 1'
+              'pwsh -NoProfile -Command "[Environment]::GetEnvironmentVariables() | ConvertTo-Json -Compress | Set-Content -LiteralPath $env:LEONIDA_VCVARS_DUMP -Encoding utf8" || exit /b 1'
+            ) -join "`r`n"
+            [System.IO.File]::WriteAllText($cmd, "$batch`r`n", [System.Text.UTF8Encoding]::new($false))
+            & cmd.exe /d /c $cmd
+            if ($LASTEXITCODE -ne 0) {
+              throw "vcvars64.bat setup failed with exit code $LASTEXITCODE"
+            }
+          } finally {
+            $env:PATH = $origPath
+            Remove-Item Env:LEONIDA_VCVARS_DUMP -ErrorAction SilentlyContinue
+            Remove-Item -LiteralPath $cmd -ErrorAction SilentlyContinue
+          }
+
+          $after = Get-Content -LiteralPath $dump -Raw -Encoding utf8 | ConvertFrom-Json -AsHashtable
+          Remove-Item -LiteralPath $dump -ErrorAction SilentlyContinue
+          if ($after['VSCMD_ARG_TGT_ARCH'] -ine 'x64' -or [string]::IsNullOrWhiteSpace($after['INCLUDE']) -or [string]::IsNullOrWhiteSpace($after['LIB'])) {
+            throw "vcvars64.bat did not initialize an x64 MSVC environment (VSCMD_ARG_TGT_ARCH='$($after['VSCMD_ARG_TGT_ARCH'])')"
+          }
+
+          $pathLike = @('PATH', 'INCLUDE', 'LIB', 'LIBPATH')
+          $envLines = [System.Collections.Generic.List[string]]::new()
+          foreach ($name in ($after.Keys | Sort-Object)) {
+            if (!$name -or $name.StartsWith('=')) { continue }
+            $upper = $name.ToUpperInvariant()
+            if ($upper -eq 'LEONIDA_VCVARS_DUMP') { continue }
+            $value = [string]$after[$name]
+            if ($upper -in $pathLike) {
+              $seen = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+              $deduped = [System.Collections.Generic.List[string]]::new()
+              foreach ($entry in ($value -split ';')) {
+                if (!$entry) { continue }
+                if ($upper -eq 'PATH' -and !$hadInstaller -and ($entry.TrimEnd('\') -ieq $installer.TrimEnd('\'))) {
+                  continue
+                }
+                if ($seen.Add($entry.TrimEnd('\'))) {
+                  $deduped.Add($entry)
+                }
+              }
+              $value = $deduped -join ';'
+            }
+            if ($before.ContainsKey($upper) -and $before[$upper] -ceq $value) { continue }
+            if ($value -match '[\r\n]') {
+              $delim = "EOF_$([guid]::NewGuid().ToString('N'))"
+              $envLines.Add("$name<<$delim")
+              $envLines.Add($value)
+              $envLines.Add($delim)
+            } else {
+              $envLines.Add("$name=$value")
+            }
+          }
+          if ($envLines.Count -gt 0) {
+            Add-Content -LiteralPath $env:GITHUB_ENV -Value $envLines -Encoding utf8
+          }
+      - uses: mozilla-actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba # v0.0.11
+      - name: Cache Vulkan headers
+        id: vulkan-headers-cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .vulkan-headers/include
+          key: vulkan-headers-6802bb4733b63ed5efd3adb308a6c885ef180ea1
+      - name: Checkout Vulkan headers (vulkan-sdk-1.4.363.0)
+        if: steps.vulkan-headers-cache.outputs.cache-hit != 'true'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: KhronosGroup/Vulkan-Headers
+          ref: 6802bb4733b63ed5efd3adb308a6c885ef180ea1 # vulkan-sdk-1.4.363.0
+          path: .vulkan-headers
+          sparse-checkout: include
+          persist-credentials: false
+      - name: Install glslang for D3D12 test shaders
+        shell: pwsh
+        run: |
+          $version = '16.6.0'
+          $release = "glslang-$version-windows-x86_64-release.zip"
+          $archive = Join-Path $env:RUNNER_TEMP $release
+          $destination = Join-Path $env:RUNNER_TEMP "glslang-$version"
+          Invoke-WebRequest -Uri "https://github.com/KhronosGroup/glslang/releases/download/$version/$release" -OutFile $archive
+          $expectedHash = '82bf434e69b9bb4829de7e2b4bc2c5e7a7861e53d66cf75e5cc70f5f694a8d9b'
+          if ((Get-FileHash -Algorithm SHA256 -LiteralPath $archive).Hash -ne $expectedHash) {
+            throw "Unexpected SHA-256 for $release"
+          }
+          Expand-Archive -LiteralPath $archive -DestinationPath $destination
+          $bin = Join-Path $destination 'bin'
+          # FindVulkan and the runtime fallback look for the legacy executable name.
+          Copy-Item -LiteralPath (Join-Path $bin 'glslang.exe') -Destination (Join-Path $bin 'glslangValidator.exe')
+          Add-Content -LiteralPath $env:GITHUB_PATH -Value $bin -Encoding utf8
+      - name: Configure
+        env:
+          VULKAN_SDK: ${{ github.workspace }}/.vulkan-headers
+        run: >-
+          cmake -S runtime -B runtime/build -G Ninja
+          -DCMAKE_BUILD_TYPE=RelWithDebInfo
+          -DLEONIDA_D3D12_SHIM_TESTS=ON
+          -DLEONIDA_REQUIRE_VULKAN=ON
+          -DLEONIDA_REQUIRE_XMA2_DECODER=ON
+          -DCMAKE_CXX_COMPILER_LAUNCHER=sccache
+          -DCMAKE_POLICY_DEFAULT_CMP0141=NEW
+          -DCMAKE_MSVC_DEBUG_INFORMATION_FORMAT=Embedded
+      - name: Build
+        run: cmake --build runtime/build
+      - name: Verify the descriptor test shaders
+        shell: pwsh
+        run: |
+          $shaders = @(
+            'LEONIDA_TEST_CS_SAMPLE_SPV', 'LEONIDA_TEST_MS_FLOAT_SPV',
+            'LEONIDA_TEST_MS_UINT_SPV', 'LEONIDA_TEST_MS_SINT_SPV',
+            'LEONIDA_TEST_MSAA_VERT_SPV', 'LEONIDA_TEST_MSAA_FRAG_SPV'
+          )
+          foreach ($shader in $shaders) {
+            $path = "runtime/build/generated/$shader.spv"
+            if (!(Test-Path -LiteralPath $path -PathType Leaf)) {
+              throw "The Windows runtime build did not compile $path"
+            }
+          }
+      # For the wine job: the test list, the checkout it was made in, and the built executables, DLLs and synthetic
+      # test shaders: the occlusion ones the tests are given as arguments, and generated/*.spv (compiled from
+      # runtime/test/glsl), which tests open through the absolute paths compiled into them. There is no game data
+      # on the runner.
+      - name: List tests for Wine
+        shell: bash
+        run: |
+          ctest --test-dir runtime/build --show-only=json-v1 > runtime/build/ctest.json
+          cygpath -m "$GITHUB_WORKSPACE" > runtime/build/windows-root.txt
+      - name: Upload the Windows build for Wine
+        id: upload-wine-artifact
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: runtime-windows
+          path: |
+            runtime/build/**/*.exe
+            runtime/build/**/*.dll
+            runtime/build/binary_occlusion.vert.spv
+            runtime/build/binary_occlusion.frag.spv
+            runtime/build/overlapping_occlusion.vert.spv
+            runtime/build/overlapping_occlusion.frag.spv
+            runtime/build/generated/*.spv
+            runtime/build/ctest.json
+            runtime/build/windows-root.txt
+          retention-days: 7
+          if-no-files-found: error
+      # --timeout: a test without a TIMEOUT of its own fails after 5 min instead of the CTest default of 25, which
+      # is longer than the job. The slowest on Linux and macOS (xdxr_build_check) takes 50 and 106 s.
+      - name: CPU runtime tests
+        run: ctest --test-dir runtime/build --output-on-failure --timeout 300
+
+  # Runs the Windows build's tests under Wine, so a change that breaks the loader on Linux (through Wine or Proton)
+  # shows up. The required ones are the loader and the stand-in game run end to end; the table in the job summary
+  # shows the rest.
+  # Two Wines: Ubuntu's own (9.0) and WineHQ's current stable, which is closer to what Proton users run.
+  # Not on pull requests: in 188 sampled pull request runs these two jobs never failed when the Windows job had passed,
+  # yet they took about a quarter of the account's 20 concurrent runner slots. They run on every push to main that
+  # touches these paths, and on demand from the Actions tab (workflow_dispatch). Pull requests still build and test the
+  # Windows runtime natively and upload runtime-windows for testers.
+  wine:
+    needs: windows
+    # The uploaded build can still be tested under Wine if the later native tests fail.
+    if: ${{ github.event_name != 'pull_request' && !cancelled() && needs.windows.outputs.wine-artifact == 'success' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        wine: [ubuntu, winehq-stable]
+    name: wine (${{ matrix.wine }})
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: runtime-windows
+          path: runtime/build
+      - name: Install Wine, Xvfb and llvmpipe
+        env:
+          WINE_FLAVOUR: ${{ matrix.wine }}
+        run: |
+          pkgs=(xvfb xauth mesa-vulkan-drivers libvulkan1)
+          if [ "$WINE_FLAVOUR" = winehq-stable ]; then
+            # WineHQ's packages need the i386 architecture. https://gitlab.winehq.org/wine/wine/-/wikis/Debian-Ubuntu
+            sudo dpkg --add-architecture i386
+            sudo mkdir -pm755 /etc/apt/keyrings
+            # The signing key is checked against WineHQ's published fingerprint before apt trusts it.
+            key=$(mktemp)
+            wget -q -O "$key" https://dl.winehq.org/wine-builds/winehq.key
+            python3 -I scripts/check_apt_key.py "$key" D43F640145369C51D786DDEA76F1A20FF987672F
+            sudo install -m 644 "$key" /etc/apt/keyrings/winehq-archive.key
+            sudo wget -q -NP /etc/apt/sources.list.d/ \
+              "https://dl.winehq.org/wine-builds/ubuntu/dists/$(. /etc/os-release && echo "$VERSION_CODENAME")/winehq-$(. /etc/os-release && echo "$VERSION_CODENAME").sources"
+            pkgs+=(winehq-stable)
+          else
+            pkgs+=(wine wine64)
+          fi
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends "${pkgs[@]}"
+          wine --version
+      - name: Windows tests under Wine
+        env:
+          WINEPREFIX: ${{ runner.temp }}/wineprefix
+          WINEDLLOVERRIDES: "mscoree,mshtml="
+          WINEDEBUG: "-all"
+        run: >-
+          xvfb-run -a bash scripts/run_wine_session.sh
+          python3 -I scripts/run_wine_tests.py
+          --tests runtime/build/ctest.json
+          --windows-root "$(cat runtime/build/windows-root.txt)"
+          --summary "$GITHUB_STEP_SUMMARY" --label "$(wine --version)"
+          --require loader --require pe_loader --require loader_tls --require unimplemented_policy
+          --require run_tiny_game --require run_tiny_game_exit_code
+      # The general Wine runner skips tests driven by the Windows runner's cmake.
+      - name: Loaded async callbacks under Wine
+        env:
+          WINEPREFIX: ${{ runner.temp }}/wineprefix
+          WINEDLLOVERRIDES: "mscoree,mshtml="
+          WINEDEBUG: "-all"
+        run: >-
+          xvfb-run -a cmake -DRUNNER=wine
+          -DLOADER="$GITHUB_WORKSPACE/runtime/build/gta6rt.exe"
+          -DGUEST="$GITHUB_WORKSPACE/runtime/build/fixtures/game/RelWithDebInfo/tiny_async.exe"
+          -P runtime/test/check_loaded_async.cmake
+
+  # Also runs the hand-written GPU tests (runtime/test/shaders) on Mesa's llvmpipe, a software Vulkan driver, so a
+  # translator or harness change that breaks a test result shows up on every pull request, without a GPU.
+  linux-gpu-tools:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      SCCACHE_GHA_ENABLED: "true"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: mozilla-actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba # v0.0.11
+      - name: Cache Vulkan headers
+        id: vulkan-headers-cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .vulkan-headers/include
+          key: vulkan-headers-6802bb4733b63ed5efd3adb308a6c885ef180ea1
+      - name: Checkout Vulkan headers (vulkan-sdk-1.4.363.0)
+        if: steps.vulkan-headers-cache.outputs.cache-hit != 'true'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: KhronosGroup/Vulkan-Headers
+          ref: 6802bb4733b63ed5efd3adb308a6c885ef180ea1 # vulkan-sdk-1.4.363.0
+          path: .vulkan-headers
+          sparse-checkout: include
+          persist-credentials: false
+      - name: Install llvmpipe, llvm-mc and SPIRV-Tools
+        run: |
+          pkgs=(libvulkan-dev mesa-vulkan-drivers vulkan-tools spirv-tools)
+          command -v cmake >/dev/null || pkgs+=(cmake)
+          command -v ninja >/dev/null || pkgs+=(ninja-build)
+          command -v g++ >/dev/null || pkgs+=(g++)
+          [ -x /usr/lib/llvm-19/bin/llvm-mc ] || pkgs+=(llvm-19)
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends "${pkgs[@]}"
+      - name: Sanity check llvm-mc amdgcn target
+        run: /usr/lib/llvm-19/bin/llvm-mc --version | grep -q 'amdgcn'
+      - name: Configure
+        env:
+          VULKAN_SDK: ${{ github.workspace }}/.vulkan-headers
+        run: >-
+          cmake -S runtime -B runtime/build -G Ninja
+          -DCMAKE_BUILD_TYPE=RelWithDebInfo
+          -DCMAKE_CXX_COMPILER_LAUNCHER=sccache
+          -DLEONIDA_REQUIRE_VULKAN=ON
+      - name: Build
+        run: cmake --build runtime/build --parallel
+      - name: Check GPU tools exist
+        run: |
+          for tool in vk_harness vk_pipeline_check vk_command_replay_test vk_queue_test vk_predicate_capture_test vk_predicated_copy_test vk_compute_test vk_texture_test vk_store_test vk_bindless_test depth24_convert_test clear_color_test predicated_copy_test d3d12_state_map_test command_list_test descriptor_table_test gfx10_descriptors_test; do
+            if [ ! -f "runtime/build/$tool" ] && [ ! -f "runtime/build/$tool.exe" ]; then
+              echo "Missing: $tool"
+              exit 1
+            fi
+          done
+          echo "All GPU tools built"
+      - name: CPU runtime tests (Linux)
+        run: ctest --test-dir runtime/build --output-on-failure
+      - name: Predicate and byte-copy shader validation and lifetimes
+        run: |
+          python3 -c 'import re,struct; from pathlib import Path; s=Path("runtime/src/predicate_reduce_spv.h").read_text(); w=[int(x,16) for x in re.findall(r"0x([0-9a-f]{8})u",s)]; Path("runtime/build/predicate_reduce.spv").write_bytes(struct.pack("<%dI"%len(w),*w))'
+          spirv-val --target-env vulkan1.1 runtime/build/predicate_reduce.spv
+          runtime/build/vk_predicate_capture_test
+          python3 -c 'import re,struct; from pathlib import Path; s=Path("runtime/src/predicated_copy_spv.h").read_text(); w=[int(x,16) for x in re.findall(r"0x([0-9a-f]{8})u",s)]; Path("runtime/build/predicated_copy.spv").write_bytes(struct.pack("<%dI"%len(w),*w))'
+          spirv-val --target-env vulkan1.2 runtime/build/predicated_copy.spv
+          runtime/build/vk_predicated_copy_test
+      - name: GPU tests on llvmpipe
+        run: |
+          vulkaninfo --summary | grep -E 'deviceName.*llvmpipe'  # fails the step if llvmpipe isn't there
+          python3 -I scripts/run_gpu_tests.py --build runtime/build --llvm-mc /usr/lib/llvm-19/bin/llvm-mc --work "$RUNNER_TEMP/gpu-native"
+      - name: Pipeline checker exit status on llvmpipe
+        shell: bash
+        run: |
+          dir=$(mktemp -d "$RUNNER_TEMP/pipeline-check.XXXXXX")
+          echo '{"ready":{"stage":"vs"},"missing":{"stage":"ps","outputs":[0]}}' > "$dir/index.json"
+          python3 -I tools/spirv_stubs.py "$dir"
+          cp "$dir/stubs/vs_empty.spv" "$dir/ready.spv"
+          check() {
+            runtime/build/vk_pipeline_check "$dir" "$dir/cache.bin" "$@" | tee "$dir/check.log"
+          }
+
+          status=0
+          check || status=$?
+          test "$status" -eq 1
+          grep -Fx 'MODULE FAIL missing' "$dir/check.log"
+          grep -Fx 'vs pipelines: 1 ok, 0 failed, 0 skipped' "$dir/check.log"
+          test -s "$dir/cache.bin"
+
+          cp "$dir/stubs/ps_empty.spv" "$dir/missing.spv"
+          check
+          grep -Fx 'ps pipelines: 1 ok, 0 failed, 0 skipped' "$dir/check.log"
+          grep -Fx 'vs pipelines: 1 ok, 0 failed, 0 skipped' "$dir/check.log"
+          if grep -F 'cache feedback' "$dir/check.log"; then exit 1; fi  # opt-in: nothing without the flag
+
+          check --max-bytes 1
+          grep -F 'big modules skipped: 2' "$dir/check.log"
+
+          # --cache-feedback: hits + no hit reported + unavailable == ok per stage; no particular bit is required
+          check --cache-feedback
+          for st in ps vs; do
+            awk -v st="$st" '$1 == st && $2 == "pipelines:" { ok = $3 }
+              $1 == st && $2 == "cache" && $3 == "feedback:" { sum = $4 + $6 + $10; seen = 1 }
+              END { exit !(seen && ok == 1 && sum == ok) }' "$dir/check.log"
+          done
+      - name: GPU tests on llvmpipe, compute with wave64 emulation
+        # llvmpipe has 8-wide subgroups, so the wave64 compute tests only run emulated. The emulated mesh tests are
+        # left out: llvmpipe's LLVM backend aborts compiling them ("Cannot emit physreg copy instruction").
+        env:
+          LEONIDA_W64_EMULATE: "1"
+        run: python3 -I scripts/run_gpu_tests.py --build runtime/build --llvm-mc /usr/lib/llvm-19/bin/llvm-mc --work "$RUNNER_TEMP/gpu-w64" --filter cs_
+      - name: GPU tests on llvmpipe with the barycentric fallback
+        # llvmpipe has no VK_KHR_fragment_shader_barycentric, so the native run skips the pixel shaders that read raw
+        # barycentrics. Under --bary-fallback they read them from an input a pass-through geometry shader feeds
+        # (tools/bary_fallback_gs.py), the path for GPUs without the extension (NVIDIA Pascal). Every shader that
+        # got such a geometry shader has to pass here, not skip.
+        shell: bash
+        env:
+          LEONIDA_BARY_FALLBACK: "1"
+        run: |
+          log="$RUNNER_TEMP/gpu-bary.log"
+          python3 -I scripts/run_gpu_tests.py --build runtime/build --llvm-mc /usr/lib/llvm-19/bin/llvm-mc --work "$RUNNER_TEMP/gpu-bary" | tee "$log"
+          names=$(sed -n 's/^bary fallback GS: \(.*\)\.bary_gs\.spv$/\1/p' "$log")
+          if [ -z "$names" ]; then
+            echo "::error::no barycentric fallback geometry shader was built"
+            exit 1
+          fi
+          while read -r name; do
+            if ! grep -Eq "^  PASS  ${name}( |\$)" "$log"; then
+              echo "::error::$name did not pass under the barycentric fallback"
+              exit 1
+            fi
+          done <<< "$names"
+
+  # Builds the runtime on an Apple Silicon Mac and runs its tests and the hand-written GPU tests on MoltenVK. The
+  # hosted runner is a VM whose Metal device is "Apple Paravirtual device" (MTLGPUFamilyMac2, not Apple7), so
+  # Mesa's KosmicKrisp finds no device there; MoltenVK runs, with 32-wide subgroups. macos-26, not macos-15: Xcode
+  # 16's libc++ has no floating-point std::from_chars (vk_pipeline_check.cpp).
+  macos:
+    runs-on: macos-26
+    timeout-minutes: 20
+    env:
+      SCCACHE_GHA_ENABLED: "true"
+      HOMEBREW_NO_AUTO_UPDATE: "1"
+      HOMEBREW_NO_INSTALL_CLEANUP: "1"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+      - uses: mozilla-actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba # v0.0.11
+      - name: Install MoltenVK, the Vulkan headers and loader, llvm-mc, SPIRV-Tools and glslang
+        run: |
+          brew install llvm molten-vk vulkan-headers vulkan-loader vulkan-tools spirv-tools glslang ninja
+          LLVM_MC="$(brew --prefix llvm)/bin/llvm-mc"  # keg-only: not on PATH
+          echo "LLVM_MC=$LLVM_MC" >> "$GITHUB_ENV"
+          "$LLVM_MC" --version | grep 'LLVM version'
+      - name: MoltenVK sees a Metal device
+        run: |
+          VK_DRIVER_FILES="$(brew --prefix)/etc/vulkan/icd.d/MoltenVK_icd.json" vulkaninfo --summary > "$RUNNER_TEMP/vulkaninfo.txt"
+          grep -E 'deviceName|driverInfo|apiVersion' "$RUNNER_TEMP/vulkaninfo.txt"
+          grep -q 'driverID *= DRIVER_ID_MOLTENVK' "$RUNNER_TEMP/vulkaninfo.txt"
+      - name: Configure
+        run: >-
+          cmake -S runtime -B runtime/build -G Ninja
+          -DCMAKE_BUILD_TYPE=RelWithDebInfo
+          -DVulkan_INCLUDE_DIR="$(brew --prefix)/include"
+          -DCMAKE_CXX_COMPILER_LAUNCHER=sccache
+          -DLEONIDA_REQUIRE_VULKAN=ON
+      - name: Build
+        id: macos-build
+        run: cmake --build runtime/build --parallel
+      # Required: every test passes or skips, except the ones listed here, each with the pull request that fixes it
+      # on MoltenVK. They still run and show in the log; one that passes gets a notice, so the list shrinks.
+      - name: Runtime tests on MoltenVK
+        shell: bash
+        env:
+          # vk_overlapping_occlusion: since #2100 (D3D-252), https://github.com/ItsNotRexed/Leonida/issues/3796#issuecomment-7086691314
+          EXPECTED_FAILURES: vk_overlapping_occlusion
+        run: |
+          set +e
+          ctest --test-dir runtime/build --output-on-failure -j "$(sysctl -n hw.ncpu)" 2>&1 | tee "$RUNNER_TEMP/ctest.log"
+          status=${PIPESTATUS[0]}
+          set -e
+          sed -n '/The following tests FAILED:/,$p' "$RUNNER_TEMP/ctest.log" |
+            sed -nE 's/^[[:space:]]+[0-9]+ - ([^ ]+) .*/\1/p' > "$RUNNER_TEMP/failed.txt"
+          python3 -I scripts/ci_expected_failures.py "$RUNNER_TEMP/failed.txt" "$status" "$EXPECTED_FAILURES"
+      - name: GPU tests on MoltenVK
+        if: ${{ !cancelled() && steps.macos-build.outcome == 'success' }}  # also after a runtime test failure
+        shell: bash
+        env:
+          # ps_ssharp: #1845 (the S#'s LOD bias, which a Metal sampler can't take). cs_fma_fused is newer than the job
+          # and wrong on MoltenVK: https://github.com/ItsNotRexed/Leonida/issues/3796#issuecomment-7086691314
+          EXPECTED_FAILURES: >-
+            ps_ssharp
+            cs_fma_fused
+        run: |
+          set +e
+          python3 -I scripts/run_gpu_tests.py --build runtime/build --llvm-mc "$LLVM_MC" --work "$RUNNER_TEMP/gpu" 2>&1 |
+            tee "$RUNNER_TEMP/gpu.log"
+          status=${PIPESTATUS[0]}
+          set -e
+          sed -n '/=== GPU TEST RESULTS ===/,$p' "$RUNNER_TEMP/gpu.log" | awk '$1 == "FAIL" { print $2 }' > "$RUNNER_TEMP/failed.txt"
+          tail -n 1 "$RUNNER_TEMP/gpu.log" >> "$GITHUB_STEP_SUMMARY"
+          python3 -I scripts/ci_expected_failures.py "$RUNNER_TEMP/failed.txt" "$status" "$EXPECTED_FAILURES"

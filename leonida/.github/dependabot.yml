@@ -1,0 +1,22 @@
+# Weekly update PRs, one at a time, grouped so a week's bumps come as a single PR that CI checks.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ["*"]
+    commit-message:
+      prefix: ci
+    open-pull-requests-limit: 1
+
+  # third_party/rpf9-explorer: CI builds rpf9dump against the new commit before it is merged.
+  - package-ecosystem: gitsubmodule
+    directory: /
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: deps
+    open-pull-requests-limit: 1

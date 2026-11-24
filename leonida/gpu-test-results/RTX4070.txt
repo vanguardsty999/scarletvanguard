@@ -1,0 +1,24 @@
+GPU:        NVIDIA GeForce RTX 4070 (Ada / AD104, PCI 10de:2786), subgroup 32..32
+Driver:     NVIDIA 617.42 (proprietary, Windows), Vulkan SDK 1.4.363.0 (loader and validation tools)
+Subgroup:   32..32 (the run_gpu_tests.py device line shows subgroup 32..32)
+OS:         Windows 11 Pro for Workstations 10.0.26300 (zh-CN)
+Commit:     c023a365a93e5e3a75290ab70f68c8da4a227700 (main, 2026-11-24)
+Tools:      llvm-mc 23.1.6 (conda llvm-tools with the AMDGPU target), SPIRV-Tools v2026.4,
+            CMake 3.31.6 + Ninja (Visual Studio 2022 Community, MSVC), Python 3.13.6
+run_gpu_tests.py: 257 shaders: 257 translated, 257 pass spirv-val
+            native:                 197/248 passed, 49 skipped, 2 failed
+            LEONIDA_W64_EMULATE=1:  229/248 passed, 17 skipped, 2 failed
+Failed:     cs_imgload_tfe, cs_imgload_d16_tfe (exit 1, native and emulated alike). These are the same
+            two that fail on the Radeon 780M (#31) and in the RTX 4070 Ti record, where the cause is the tfe
+            status VGPR being read but never written; the cause was not examined on this machine, and the
+            two were not rerun with #98 (SHADER-1266).
+Skipped:    native: 31 "no 64-wide compute subgroup on this device" and 1 "no 64-wide subgroup on this
+            device" (the wave64 compute fixtures, which the emulated run runs), 1 "this device cannot
+            require a 64-wide fragment subgroup: subgroup 32..32" (ps_w64x_readlane, skipped in the
+            emulated run too), plus 16 "run by d3d12_*_test / w64_graphics.py" cases. Emulated: those 16
+            plus the 64-wide fragment one, 17 in all.
+Notes:
+- Built with scripts\build_runtime.ps1 (Ninja, RelWithDebInfo, MSVC) at the commit above; the tests ran
+  from runtime\build with --build runtime\build.
+- AI-assisted (Claude Code ran the build and tests; Codex, gpt-6.1-terra, checked this file against the
+  run output). No game files, nothing online.

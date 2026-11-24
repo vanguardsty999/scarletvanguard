@@ -1,0 +1,49 @@
+GPU:        NVIDIA GeForce RTX 4060
+VRAM:       8188 MiB reported by nvidia-smi
+Driver:     NVIDIA 595.112.07
+Subgroup:   Not recorded; no subgroup-range claim is made.
+OS:         Nobara Linux 44 (KDE Plasma Desktop Edition)
+Commit:     1c93c8697078c3ccbd6f374caf5bb3ab0b6bc8e4
+Date:       2026-11-24
+Tools:      cmake-4.3.0-1.fc44.x86_64
+            gcc-c++-16.2.1-2.fc44.x86_64
+            python3-3.14.7-1.fc44.x86_64
+            spirv-tools-2026.1-1.fc44.x86_64
+            vulkan-headers-1.4.341.0-1.fc44.noarch
+            ninja-build-1.13.2-2.fc44.x86_64
+
+Scope: Three selected synthetic compute fixtures only, using the repository's
+pre-disassembled fixtures and spirv-as. This is not a full-suite result.
+
+run_gpu_tests.py --filter cs_bounds:
+  1 shader: 1 translated, 1 pass spirv-val
+  PASS cs_bounds: 0x12345678 0x12345678 0x0 0xeeeeeeee
+  GPU summary: 1/1 passed
+
+run_gpu_tests.py --filter cs_buf:
+  2 shaders: 2 translated, 2 pass spirv-val
+  PASS cs_buf_swizzle: 0x5eed0024 0x5eed0044 0x5eed004c 0x5eed0008 0x5eed000c 0x0 0xbeef0000 0xbeef0001
+  PASS cs_buf_tail: 0x0 0x5eed000c 0x5eed0008 0x5eed000c 0x0 0x0 0x5eed0010 0x0
+  GPU summary: 2/2 passed
+
+Combined selected coverage: 3 distinct tests passed, 0 reported skipped,
+0 reported failed. All 3 translated shaders passed spirv-val.
+Other fixtures, wave64-emulation runs, CTest and the translator test suite
+were not run. No game files were used. No game-compatibility claim is made.
+
+Build, from the repository root:
+  cmake -S runtime -B runtime/build/linux -G Ninja -DCMAKE_BUILD_TYPE=Release -DLEONIDA_BUILD_WINDOWS_RUNTIME=OFF -DLEONIDA_VULKAN_HEADERS_FETCH=OFF -DLEONIDA_SDL3_FETCH=OFF -DFETCHCONTENT_FULLY_DISCONNECTED=ON -DLEONIDA_REQUIRE_VULKAN=ON
+  cmake --build runtime/build/linux --target vk_compute_test vk_store_test vk_harness --parallel 2
+
+Test commands, with paths written relative to the repository root:
+  LEONIDA_VK_DEVICE=4060 LEONIDA_GPU_TEST_TIMEOUT=20 timeout --kill-after=5s 60s python3 -I scripts/run_gpu_tests.py --build runtime/build/linux --disasm-dir tests/semantic/fixtures/disasm --assembler spirv-as --filter cs_bounds --require-pass --work gpu-work-cs-bounds
+  LEONIDA_VK_DEVICE=4060 LEONIDA_GPU_TEST_TIMEOUT=20 timeout --kill-after=5s 90s python3 -I scripts/run_gpu_tests.py --build runtime/build/linux --disasm-dir tests/semantic/fixtures/disasm --assembler spirv-as --filter cs_buf --require-pass --work gpu-work-cs-buf
+
+Notes:
+- Scripts and native test programs came from the same pinned commit above.
+- LEONIDA_VK_DEVICE=4060 constrained device selection; nvidia-smi separately
+  reported the full card name, driver and VRAM listed above.
+- llvm-mc was not used; the selected pre-disassembled fixtures bypass that step.
+- The installed system Vulkan headers were used. No dependency fetch was enabled.
+- AI-assisted: setup guidance and report preparation. The hardware owner ran the
+  commands locally and supplied the test output and system metadata.

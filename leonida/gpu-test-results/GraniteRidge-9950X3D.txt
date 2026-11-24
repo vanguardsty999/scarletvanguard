@@ -1,0 +1,31 @@
+GPU:        AMD Radeon Graphics, Ryzen 9 9950X3D integrated (RDNA2 iGPU, Granite Ridge, PCI 1002:13c0),
+            subgroup 32..64
+Driver:     AMD proprietary 32.0.21042.62 (Vulkan driver 2.0.353, "2026.04.17 (AMD proprietary shader
+            compiler)"), Vulkan 1.4.315
+Subgroup:   32..64 (minSubgroupSize 32, maxSubgroupSize 64)
+OS:         Windows 11 Home, build 26300
+Commit:     3aa975421d470b76da1aa986a91282c59e20d642 (main, 2026-11-24)
+Tools:      llvm-mc 21.1.8 (native, built by scripts\build_llvm_mc.ps1), SPIRV-Tools v2026.4 (Vulkan SDK
+            1.4.363.0), CMake 3.31.6 + Ninja 1.12.1, MSVC 14.44.35207 (VS 2022 Build Tools 17.14,
+            Windows SDK 10.0.26100.0), Python 3.12.10
+run_gpu_tests.py: 261 shaders: 261 translated, 261 pass spirv-val
+            native:                 235/252 passed, 17 skipped, 0 failed
+            LEONIDA_W64_EMULATE=1:  235/252 passed, 17 skipped, 0 failed
+Failed:     none, in either run. cs_imgload_tfe and cs_imgload_d16_tfe pass on this commit (the fixtures
+            changed in #892).
+Skipped:    the same 17 in both runs: the 16 "run by d3d12_*_test / w64_graphics.py" cases, and 1
+            "this device cannot require a 64-wide fragment subgroup: subgroup 32..64".
+Notes:
+- The device gives 64-wide compute subgroups, so the native run executes the wave64 compute fixtures
+  that a 32-wide device skips (cs_dpp_w64 among them); none is skipped for subgroup size.
+- Built with scripts\build_runtime.ps1 (CMake + Ninja, RelWithDebInfo, 780 targets), with the Vulkan
+  SDK's Bin folder and llvm-mc on PATH.
+- Device picked with LEONIDA_VK_DEVICE=Radeon (the machine also has an NVIDIA GeForce RTX 4080,
+  PCI 10de:2704); the run prints "device: AMD Radeon(TM) Graphics (subgroup 32..64)".
+- The same build and commit on the RTX 4080 of this machine (driver 621.24): native 203/252 passed,
+  49 skipped, 0 failed; emulated 235/252 passed, 17 skipped, 0 failed. gpu-test-results/RTX4080.txt
+  records the earlier commit d42773d0, with the two tfe failures that #892 has since fixed.
+- ctest, the D3D12 tests and w64_graphics.py were not run in this pass; this file covers
+  run_gpu_tests.py only, one run of each mode.
+- AI-assisted (Claude Code): built main and ran run_gpu_tests.py native and emulated. No game files,
+  nothing online.
