@@ -28,7 +28,9 @@ foreach ($name in @('leonida', 'xcl', 'victory-fork')) {
 }
 
 Write-Host "`n[flattening]" -ForegroundColor Cyan
-$nested = Get-ChildItem $root -Recurse -Force -ErrorAction SilentlyContinue | Where-Object { $_.Name -eq '.git' }
+$rootGit = Join-Path $root '.git'
+$nested = Get-ChildItem $root -Recurse -Force -ErrorAction SilentlyContinue |
+    Where-Object { $_.Name -eq '.git' -and $_.FullName -ne $rootGit -and -not $_.FullName.StartsWith($rootGit + [IO.Path]::DirectorySeparatorChar) }
 Check-Item ($null -eq $nested) "no internal .git/submodule metadata ($(@($nested).Count) found)"
 
 Write-Host "`n[policy: no game data]" -ForegroundColor Cyan
