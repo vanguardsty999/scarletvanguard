@@ -8,6 +8,7 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
+. (Join-Path $PSScriptRoot 'msvc.ps1')
 
 function Test-Tool([string]$name) { return $null -ne (Get-Command $name -ErrorAction SilentlyContinue) }
 
@@ -31,6 +32,7 @@ function Build-Leonida {
 
 function Build-Xcl {
     $dir = Join-Path $root 'xcl'
+    Initialize-Msvc
     if (-not (Test-Tool 'cargo')) { throw 'Rust stable-x86_64-pc-windows-msvc is required for xcl: https://rustup.rs' }
     Push-Location $dir
     try {
@@ -40,6 +42,7 @@ function Build-Xcl {
 
 function Build-Victory {
     $dir = Join-Path $root 'victory-fork'
+    Initialize-Msvc
     if (-not (Test-Tool 'cargo')) { throw 'Rust (rust-toolchain.toml) is required for victory-fork: https://rustup.rs' }
     Push-Location $dir
     try {

@@ -34,11 +34,14 @@ $nested = Get-ChildItem $root -Recurse -Force -ErrorAction SilentlyContinue |
 Check-Item ($null -eq $nested) "no internal .git/submodule metadata ($(@($nested).Count) found)"
 
 Write-Host "`n[policy: no game data]" -ForegroundColor Cyan
-$forbidden = Get-ChildItem $root -Recurse -File -Force -Include '*.exe','*.rpf','*.xvc','*.msixvc','*.ttpf','*.bk2','*.awc','*.bvh4' -ErrorAction SilentlyContinue
-Check-Item ($null -eq $forbidden) "no game executables/packages found ($(@($forbidden).Count) files)"
+$forbidden = Get-ChildItem $root -Recurse -File -Force -Include '*.exe','*.rpf','*.xvc','*.msixvc','*.ttpf','*.bk2','*.awc','*.bvh4' -ErrorAction SilentlyContinue |
+    Where-Object { $_.FullName -notmatch '\\(target|build)\\' }
+Check-Item ($null -eq $forbidden) "no game executables/packages outside build output ($(@($forbidden).Count) files)"
 
 Write-Host "`n[build tools]" -ForegroundColor Cyan
-foreach ($tool in @('git','python','cargo','cmake','dotnet','spirv-val','llvm-mc')) {
+. (Join-Path $PSScriptRoot 'msvc.ps1')
+try { Initialize-Msvc } catch { Write-Host "  MSVC: $($_.Exception.Message)" -ForegroundColor Yellow }
+foreach ($tool in @('git','python','cargo','rustc','cl','link','cmake','dotnet','spirv-val','llvm-mc')) {
     $found = $null -ne (Get-Command $tool -ErrorAction SilentlyContinue)
     Write-Host "  $tool`: $(if ($found) { 'available' } else { 'MISSING' })"
 }

@@ -544,6 +544,8 @@ fn create() -> windows::core::Result<Host> {
             let adapter = warp_adapter()?;
             D3D12CreateDevice(&adapter, D3D_FEATURE_LEVEL_12_0, &mut device)?;
             tracing::info!("host device on the software adapter (WARP)");
+        } else if let Some(adapter) = selected_adapter()? {
+            D3D12CreateDevice(&adapter, D3D_FEATURE_LEVEL_12_0, &mut device)?;
         } else {
             D3D12CreateDevice(None, D3D_FEATURE_LEVEL_12_0, &mut device)?;
         }
@@ -620,6 +622,71 @@ fn create() -> windows::core::Result<Host> {
             presenter: Mutex::new(None),
             adapter,
         })
+    }
+}
+
+fn adapter_name(desc: &DXGI_ADAPTER_DESC1) -> String {
+    let end = desc
+        .Description
+        .iter()
+        .position(|&unit| unit == 0)
+        .unwrap_or(desc.Description.len());
+    String::from_utf16_lossy(&desc.Description[..end])
+}
+
+/// `VICTORY_ADAPTER`: `auto` (the default), the index of a hardware adapter,
+/// or a case-insensitive substring of its name, e.g. `nvidia` or `rtx 4070`.
+/// Software adapters are skipped so an explicit choice never selects WARP.
+fn selected_adapter() -> windows::core::Result<Option<IDXGIAdapter>> {
+    let spec = std::env::var("VICTORY_ADAPTER").unwrap_or_default();
+    let spec = spec.trim();
+    if spec.is_empty() || spec.eq_ignore_ascii_case("auto") {
+        return Ok(None);
+    }
+    // SAFETY: plain DXGI factory/adapter queries.
+    unsafe {
+        let factory: IDXGIFactory4 = CreateDXGIFactory2(DXGI_CREATE_FACTORY_FLAGS(0))?;
+        let by_index = spec.parse::<u32>().ok();
+        let needle = spec.to_lowercase();
+        let mut hardware = Vec::new();
+        let mut index = 0u32;
+        loop {
+            let adapter = match factory.EnumAdapters1(index) {
+                Ok(adapter) => adapter,
+                Err(error) if error.code() == DXGI_ERROR_NOT_FOUND => break,
+                Err(error) => return Err(error),
+            };
+            let desc = adapter.GetDesc1()?;
+            if desc.Flags & DXGI_ADAPTER_FLAG_SOFTWARE.0 as u32 == 0 {
+                hardware.push(adapter);
+            }
+            index += 1;
+        }
+        let chosen = if let Some(n) = by_index {
+            hardware.into_iter().nth(n as usize)
+        } else {
+            hardware.into_iter().find(|adapter| {
+                adapter
+                    .cast::<IDXGIAdapter1>()
+                    .ok()
+                    .and_then(|a| a.GetDesc1().ok())
+                    .is_some_and(|d| adapter_name(&d).to_lowercase().contains(&needle))
+            })
+        };
+        let Some(adapter) = chosen else {
+            tracing::warn!(
+                requested = %spec,
+                "VICTORY_ADAPTER matched no hardware adapter; using the default adapter"
+            );
+            return Ok(None);
+        };
+        let desc = adapter.cast::<IDXGIAdapter1>()?.GetDesc1()?;
+        tracing::info!(
+            adapter = %adapter_name(&desc),
+            vendor = format_args!("{:#x}", desc.VendorId),
+            "host device on adapter selected by VICTORY_ADAPTER"
+        );
+        Ok(Some(adapter.cast::<IDXGIAdapter>()?))
     }
 }
 
