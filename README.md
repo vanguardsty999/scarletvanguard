@@ -16,7 +16,7 @@ Versão **achatada** do XRMLX. Os três projetos que antes viviam como submodule
 |---|---|---|
 | `leonida/` | `ubiquitarianism/leonida` + submodule `rpf9-explorer` | `4a50cafc7af8b5a842c85a3794b286232495068d` |
 | `xcl/` | `xcl-dev/xcl` | `1d027e5c76c9a86a7ee2ca1cc677edf0be95d331` |
-| `victory-fork/` | `fxceless/victory-fork` | `2119b0e44c53aa9648307b0c5c73590290305b1f` |
+| `victory-fork/` | `fxceless/victory-fork` | `c96b4f2b8365bf43d54ab074940923ef8267f4c6` |
 
 O agregado original com histórico e submodules continua intacto em `..\XRMLX`.
 
@@ -64,7 +64,7 @@ Um build real exige uma **cópia do jogo pertencente ao usuário**; nenhum arqui
 
 - Rust `stable-x86_64-pc-windows-msvc` 1.100.0 instalado; `cargo`, `rustc`, `cl` e `link` disponíveis.
 - `cargo build --release --workspace` no XCL: **concluído**, `xcl\target\release\xcl.exe` (8,57 MB), `--help` executado.
-- `cargo build --release -p victory` no victory-fork: **concluído**, `victory-fork\target\release\victory.exe` (7,34 MB), `--help` executado. Avisos do compilador no XCL (`fetch_update` deprecado) não foram alterados.
+- `cargo build --release -p victory` no victory-fork: **concluído**, `victory-fork\target\release\victory.exe` (7,46 MB), `--help`/`--version` executados. O fork recebeu 4 commits novos (`2119b0e` → `c96b4f2`: depth bounds, defaults mais rápidos, texturas de pele/cabelo e correções de forks colaboradores); a árvore foi sincronizada e o patch `VICTORY_ADAPTER` reaplicado sobre `host.rs`. Avisos do compilador no XCL (`fetch_update` deprecado) não foram alterados.
 - **Não foi executado nenhum teste de GPU e nenhum jogo**: não há jogo fornecido nesta máquina. "Funcional para NVIDIA" aqui significa toolchain + seleção de adaptador + binários compilados prontos para o jogo do usuário, **não** uma sessão de gameplay validada.
 
 ## Pré-requisitos nesta máquina
