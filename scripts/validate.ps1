@@ -27,6 +27,14 @@ foreach ($name in @('leonida', 'xcl', 'victory-fork')) {
     }
 }
 
+Write-Host "`n[preparation docs/scripts]" -ForegroundColor Cyan
+$prep = @(
+    'docs\PLATFORM_ABSTRACTION.md', 'docs\PERF_RUNBOOK.md',
+    'scripts\probe-game.ps1', 'scripts\pso-precompile.ps1',
+    'scripts\measure.ps1', 'scripts\affinity.ps1'
+)
+foreach ($item in $prep) { Check-Item (Test-Path (Join-Path $root $item)) "$item present" }
+
 Write-Host "`n[flattening]" -ForegroundColor Cyan
 $rootGit = Join-Path $root '.git'
 $nested = Get-ChildItem $root -Recurse -Force -ErrorAction SilentlyContinue |

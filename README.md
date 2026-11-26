@@ -26,12 +26,20 @@ O agregado original com histórico e submodules continua intacto em `..\XRMLX`.
 XRMLX-Fusion/
 ├── README.md
 ├── .gitignore
+├── docs/
+│   ├── README.md              # índice
+│   ├── PLATFORM_ABSTRACTION.md # XDK → Win32 / shim incremental
+│   └── PERF_RUNBOOK.md        # PIX, VTune, ETW, PSO e afinidade
 ├── scripts/
-│   ├── validate.ps1   # confere estrutura, ausência de .git interno e de dados de jogo
-│   ├── refresh.ps1    # recopia os fontes de ..\XRMLX para cá
-│   ├── msvc.ps1       # inicializa o ambiente C++ (vcvars64) para cargo
-│   ├── build.ps1      # build unificado dos três componentes
-│   └── nvidia.ps1     # perfil NVIDIA: seleção de adaptador + launch
+│   ├── validate.ps1       # confere estrutura e ausência de dados de jogo
+│   ├── refresh.ps1        # recopia os fontes de ..\XRMLX para cá
+│   ├── msvc.ps1           # inicializa o ambiente C++ (vcvars64) para cargo
+│   ├── build.ps1          # build unificado dos três componentes
+│   ├── nvidia.ps1         # perfil NVIDIA: seleção de adaptador + launch
+│   ├── probe-game.ps1     # inventário SOMENTE LEITURA do jogo
+│   ├── pso-precompile.ps1 # prepara comandos de precompilação (não executa)
+│   ├── measure.ps1        # prepara sessão PIX/VTune/ETW (não lança o jogo)
+│   └── affinity.ps1       # inicia/ajusta afinidade de processo/threads
 ├── leonida/           # fonte achatado, inclui third_party/rpf9-explorer
 ├── xcl/               # fonte achatado
 └── victory-fork/      # fonte achatado
@@ -51,6 +59,17 @@ cd C:\Users\rafae\Desktop\XRMVI\XRMLX-Fusion
 ```
 
 Um build real exige uma **cópia do jogo pertencente ao usuário**; nenhum arquivo de jogo foi copiado para esta árvore.
+
+Preparação para o jogo em download (`N:\downloads\GTA6.Xbox.v1.0.2.1-CYBERLEEK`) — nada abaixo altera o jogo:
+
+```powershell
+.\scripts\probe-game.ps1 -GameDir "N:\downloads\GTA6.Xbox.v1.0.2.1-CYBERLEEK"
+.\scripts\pso-precompile.ps1 -GameDir "N:\downloads\GTA6.Xbox.v1.0.2.1-CYBERLEEK"
+.\scripts\measure.ps1 -Component xcl -GamePath "...\game_scarlett_master.exe" -Tool all
+.\scripts\affinity.ps1 -ProcessName victory -Cores 0-7
+```
+
+A estratégia e o runbook estão em [`docs/`](docs/README.md).
 
 ## Integração D3D12 / toolchain C++ / perfil NVIDIA
 

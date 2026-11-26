@@ -35,6 +35,10 @@ used-pipelines.txt
 *.spirv
 *.spv
 
+# Measurement/precompile artifacts (workspace only, never the game directory)
+measurements/
+precompile-commands.txt
+
 # Local configuration
 victory.toml
 *.local
