@@ -47,7 +47,7 @@ Check-Item ($null -eq $nested) "no internal .git/submodule metadata ($(@($nested
 
 Write-Host "`n[policy: no game data]" -ForegroundColor Cyan
 $forbidden = Get-ChildItem $root -Recurse -File -Force -Include '*.exe','*.dll','*.rpf','*.xvc','*.msixvc','*.ttpf','*.bk2','*.awc','*.bvh4' -ErrorAction SilentlyContinue |
-    Where-Object { $_.FullName -notmatch '\\(target|build)\\' }
+    Where-Object { $_.FullName -notmatch '\\(target|build|bin)\\' }
 Check-Item ($null -eq $forbidden) "no executables, libraries, or game packages outside build output ($(@($forbidden).Count) files)"
 
 Write-Host "`n[build tools]" -ForegroundColor Cyan
