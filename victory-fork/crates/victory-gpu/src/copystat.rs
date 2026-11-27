@@ -37,6 +37,8 @@ pub(crate) enum C {
     TexWatched,
     TexHashed,
     TexChanged,
+    /// Changes of guarded textures the hash found and the guard did not see.
+    TexHot,
     /// Frames presented since the last line (what the line divides by).
     Frames,
     /// Calls of list methods that record into a host list, and the
@@ -129,10 +131,46 @@ pub(crate) enum C {
     IndirectBounded,
 }
 const COUNTERS: usize = 80;
-static COUNT: [AtomicU64; COUNTERS] = [const { AtomicU64::new(0) }; COUNTERS];
+/// One of some sets of counters, each in lines of the processor's memory of
+/// its own: a set for all threads had them wait for each other's lines at
+/// every list call (what counts here is summed up for the log alone).
+#[repr(align(64))]
+struct Bank<const N: usize>([AtomicU64; N]);
+
+/// The sets.
+const BANKS: usize = 32;
+
+static COUNT: [Bank<COUNTERS>; BANKS] = [const { Bank([const { AtomicU64::new(0) }; COUNTERS]) }; BANKS];
+
+/// This thread's set.
+#[inline]
+fn bank() -> usize {
+    static NEXT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+    thread_local!(static MINE: std::cell::Cell<usize> = const { std::cell::Cell::new(usize::MAX) });
+    // (Asked by the allocator too: nothing here allocates.)
+    MINE.try_with(|mine| {
+        if mine.get() == usize::MAX {
+            mine.set(NEXT.fetch_add(1, Relaxed) % BANKS);
+        }
+        mine.get()
+    })
+    .unwrap_or(0)
+}
 
 pub(crate) fn add(c: C, n: u64) {
-    COUNT[c as usize].fetch_add(n, Relaxed);
+    COUNT[bank()].0[c as usize].fetch_add(n, Relaxed);
+}
+
+/// The counter, all sets together, as it is now (it goes back to 0 with
+/// [`log`]).
+pub(crate) fn peek(c: C) -> u64 {
+    let i = c as usize;
+    COUNT.iter().map(|b| b.0[i].load(Relaxed)).sum()
+}
+
+/// Counter `i`, all sets together, from now on 0.
+fn taken(i: usize) -> u64 {
+    COUNT.iter().map(|b| b.0[i].swap(0, Relaxed)).sum()
 }
 
 /// How copies run: 0 guarded (as always), 1 plain, 2 not at all.
@@ -176,15 +214,86 @@ static WAITS_BY_WORK: Mutex<Option<HashMap<String, (u64, u64)>>> = Mutex::new(No
 /// their microseconds, and the longest one's.
 static COMMANDS_BY_WORK: Mutex<Option<HashMap<String, (u64, u64, u64)>>> = Mutex::new(None);
 
+/// With `VICTORY_GPU_TIMING`: the commands' time on the card since the last
+/// line by what was recorded with them (`crate::host::between`'s bits, as
+/// the note's text ends): how many, and their nanoseconds.
+static COMMANDS_BY_BETWEEN: Mutex<Option<HashMap<u32, (u64, u64)>>> = Mutex::new(None);
+
 /// A command took `ms` on the card (timing run). `op` is its note: the
-/// kind and size first, then the pipeline in brackets, then what it binds.
+/// kind and size first, then the pipeline in brackets, then what it binds,
+/// then what was recorded with it (`crate::host::between`).
+///
+/// Summed in nanoseconds: in whole microseconds a command of 0.9 counted
+/// as 0, and a frame's 13,000 commands lost some 6 ms of their sum (run
+/// 410's lines are that much too low, and its "0.7 microseconds each" for
+/// the cheapest draws is 0.7 to 1.7).
 pub(crate) fn command_took(op: &str, ms: f64) {
-    let us = (ms * 1e3) as u64;
-    let mut by = COMMANDS_BY_WORK.lock().unwrap_or_else(|e| e.into_inner());
-    let e = by.get_or_insert_with(HashMap::new).entry(command_key(op)).or_insert((0, 0, 0));
-    e.0 += 1;
-    e.1 += us;
-    e.2 = e.2.max(us);
+    let ns = (ms * 1e6) as u64;
+    {
+        let mut by = COMMANDS_BY_WORK.lock().unwrap_or_else(|e| e.into_inner());
+        let e = by.get_or_insert_with(HashMap::new).entry(command_key(op)).or_insert((0, 0, 0));
+        e.0 += 1;
+        e.1 += ns;
+        e.2 = e.2.max(ns);
+    }
+    let mark = crate::host::between::MARK;
+    if let Some(at) = op.rfind(mark)
+        && let Ok(bits) = u32::from_str_radix(op[at + mark.len()..].trim(), 16)
+    {
+        // Draws and mesh dispatches apart from compute work: bit 31.
+        let word = op.split(' ').next().unwrap_or("");
+        let compute = word == "dispatch" || op.contains("[compute ");
+        let draws = matches!(word, "indirect" | "mesh" | "draw" | "indexed") && !compute;
+        if draws {
+            let mut by = COMMANDS_BY_BETWEEN.lock().unwrap_or_else(|e| e.into_inner());
+            let e = by.get_or_insert_with(HashMap::new).entry(bits).or_insert((0, 0));
+            e.0 += 1;
+            e.1 += ns;
+        }
+    }
+}
+
+/// The frame lines of [`COMMANDS_BY_BETWEEN`]: the draws' time on the card
+/// by what was recorded between each and the next, and by where the draw's
+/// buffers lie.
+fn between_lines(frames: f64) {
+    use crate::host::between as b;
+    let Some(by) = COMMANDS_BY_BETWEEN.lock().unwrap_or_else(|e| e.into_inner()).take() else {
+        return;
+    };
+    // (How many a frame, microseconds each) of the draws `pick` takes.
+    let of = |pick: &dyn Fn(u32) -> bool| {
+        let (n, ns) = by.iter().filter(|(bits, _)| pick(**bits)).fold((0u64, 0u64), |a, (_, e)| (a.0 + e.0, a.1 + e.1));
+        format!("{:.0} at {:.2} us", n as f64 / frames, ns as f64 / 1e3 / n.max(1) as f64)
+    };
+    let all: (u64, u64) = by.values().fold((0, 0), |a, e| (a.0 + e.0, a.1 + e.1));
+    tracing::info!(
+        "  the card's time of draws by what was recorded up to the next command (timing run): all {:.0} a frame, {:.1} ms; \
+         with nothing else {}; with a state change of ours {}; a barrier call of the title's {}; a clamp pass of ours {}; \
+         another pipeline {}; another root signature {}; heaps set {}; targets set {} (a draw counts under each it has)",
+        all.0 as f64 / frames,
+        all.1 as f64 / 1e6 / frames,
+        of(&|bits| bits & b::BETWEEN == 0),
+        of(&|bits| bits & b::OUR_BARRIER != 0),
+        of(&|bits| bits & b::TITLE_BARRIER != 0),
+        of(&|bits| bits & b::CLAMP != 0),
+        of(&|bits| bits & b::PIPELINE != 0),
+        of(&|bits| bits & b::ROOT != 0),
+        of(&|bits| bits & b::HEAPS != 0),
+        of(&|bits| bits & b::TARGETS != 0)
+    );
+    tracing::info!(
+        "  the card's time of draws by where their buffers lie (timing run; with VICTORY_READY_ONCE=0 and \
+         VICTORY_LIST_VIEWS=0 every draw is asked, else only a table's first draw in its list): of the draws with \
+         nothing else recorded: reading a copy in the PC's memory {}, picking buffers by an index {}, neither {}; \
+         of all draws: {}, {}, {}",
+        of(&|bits| bits & b::BETWEEN == 0 && bits & b::READS_PC != 0),
+        of(&|bits| bits & b::BETWEEN == 0 && bits & (b::READS_PC | b::PICKS) == b::PICKS),
+        of(&|bits| bits & b::BETWEEN == 0 && bits & (b::READS_PC | b::PICKS) == 0),
+        of(&|bits| bits & b::READS_PC != 0),
+        of(&|bits| bits & (b::READS_PC | b::PICKS) == b::PICKS),
+        of(&|bits| bits & (b::READS_PC | b::PICKS) == 0)
+    );
 }
 
 /// What a command's note is summed under: its pipeline (`[compute ...]`,
@@ -275,7 +384,13 @@ pub(crate) fn range(src: usize, len: usize, us: u64, kind: u32) {
 /// runtime and of the driver alike (3.5 GB in run 60's gameplay, growing by
 /// some 2 MB a frame, and nothing said whose): this says which part is
 /// ours. Bigger blocks are allocations of their own in the map.
-static OWN: [AtomicU64; 8] = [const { AtomicU64::new(0) }; 8];
+static OWN: [Bank<8>; BANKS] = [const { Bank([const { AtomicU64::new(0) }; 8]) }; BANKS];
+
+/// Count `i` of [`OWN`], all sets together (a block made by one thread and
+/// released by another leaves one set below zero: the sum is right).
+fn owned(i: usize) -> u64 {
+    OWN.iter().fold(0u64, |sum, b| sum.wrapping_add(b.0[i].load(Relaxed)))
+}
 
 /// The class of [`OWN`] a block of `size` bytes counts in.
 fn block_class(size: usize) -> usize {
@@ -289,12 +404,13 @@ fn block_class(size: usize) -> usize {
 
 fn own(size: usize, made: bool) {
     let class = block_class(size);
+    let own = &OWN[bank()].0;
     if made {
-        OWN[class].fetch_add(size as u64, Relaxed);
-        OWN[4 + class].fetch_add(1, Relaxed);
+        own[class].fetch_add(size as u64, Relaxed);
+        own[4 + class].fetch_add(1, Relaxed);
     } else {
-        OWN[class].fetch_sub(size as u64, Relaxed);
-        OWN[4 + class].fetch_sub(1, Relaxed);
+        own[class].fetch_sub(size as u64, Relaxed);
+        own[4 + class].fetch_sub(1, Relaxed);
     }
 }
 
@@ -406,7 +522,7 @@ mod command_tests {
 
 #[cfg(test)]
 mod own_tests {
-    use super::{OWN, block_class};
+    use super::{block_class, owned};
     use std::sync::atomic::Ordering::Relaxed;
 
     #[test]
@@ -444,16 +560,16 @@ mod own_tests {
     #[test]
     fn a_block_is_counted_while_it_lives() {
         let block = vec![1u8; 8 << 20];
-        assert!(OWN[3].load(Relaxed) >= 8 << 20);
-        assert!(OWN[7].load(Relaxed) >= 1);
+        assert!(owned(3) >= 8 << 20);
+        assert!(owned(7) >= 1);
         drop(block);
-        assert!(OWN[7].load(Relaxed) < u64::MAX / 2, "no count below zero");
+        assert!(owned(7) < u64::MAX / 2, "no count below zero");
     }
 }
 
 /// The process's memory in bytes: in physical memory, and committed
 /// (private bytes).
-fn process_memory() -> (u64, u64) {
+pub(crate) fn process_memory() -> (u64, u64) {
     use windows_sys::Win32::System::ProcessStatus::{
         K32GetProcessMemoryInfo, PROCESS_MEMORY_COUNTERS,
     };
@@ -690,6 +806,11 @@ fn log_memory() {
     let card = crate::host::host()
         .and_then(|h| h.video_memory())
         .unwrap_or_default();
+    // Everything the system says of the two memory groups, beside the
+    // budget and use the lines below print.
+    if let Some(h) = crate::host::host() {
+        h.log_video_memory("with the memory line");
+    }
     // What else holds memory: the map, on a thread of its own, with every
     // sixth line; and what the shader table and the pipeline library keep.
     static LINES: AtomicU64 = AtomicU64::new(0);
@@ -737,6 +858,26 @@ fn log_memory() {
         mb(card[1]),
         mb(card[0]),
         mb(card[3]),
+    );
+    {
+        let [textures, staging] = crate::pool::memory();
+        tracing::info!("memory in blocks (VICTORY_TEXTURE_POOL=0 turns them off): {textures} MB of textures, {staging} MB of their staging buffers");
+    }
+    let targets = crate::resource::targets_census();
+    tracing::info!(
+        "host copies the sweep never lets go: {} the host renders to or writes {:.0} MB ({} of them placed {:.0} MB);          of them {} have title memory that is not mapped now {:.0} MB, {} were not used for 30 s and are held by no          list and no slot {:.0} MB, {} are both {:.0} MB; and {} copies of textures the title fills that the host          copied into {:.0} MB",
+        targets[0],
+        mb(targets[1]),
+        targets[10],
+        mb(targets[11]),
+        targets[2],
+        mb(targets[3]),
+        targets[4],
+        mb(targets[5]),
+        targets[6],
+        mb(targets[7]),
+        targets[8],
+        mb(targets[9]),
     );
     tracing::info!(
         "memory let go since the start: {} windows outside buffers {:.0} MB, {} staging buffers \
@@ -788,7 +929,7 @@ fn log_memory() {
     let alive: Vec<u64> = crate::host::ALIVE.iter().map(|a| a.load(Relaxed)).collect();
     let window = crate::shadow::window_use();
     let views = crate::descriptor::views_kept();
-    let own: Vec<u64> = OWN.iter().map(|o| o.load(Relaxed)).collect();
+    let own: Vec<u64> = (0..8).map(owned).collect();
     tracing::info!(
         "memory, what holds it: {} host lists alive; their scratch memory: {} chunks {:.0} MB, of          them {} chunks {:.0} MB spare ({} taken from the spare ones so far); their other upload          buffers: {} alive {:.0} MB; windows outside buffers (grid {} KiB): {:.0} MB of their          pages ever copied, {} shown by descriptor slots {:.0} MB, {} held by lists or the pass          over the heap {:.0} MB, {} asked for without a length {:.0} MB; buffer views of the heap          whose slot showed another copy than the one brought up to date: {}; distinct views          kept: {} ({} free) {:.0} MB; our own allocations: {:.0} MB in {} blocks (under 4 KiB          {:.0} MB in {}, to 64 KiB {:.0} MB in {}, to 1 MiB {:.0} MB in {}, larger {:.0} MB in {})",
         alive[0],
@@ -954,7 +1095,9 @@ fn submitter(all: &mut Vec<(u32, Submitter)>, id: u32) -> &mut Submitter {
 
 /// A list call on this thread that began at `started` has returned.
 pub(crate) fn recorded(started: std::time::Instant) {
-    let ns = started.elapsed().as_nanos() as u64;
+    let took = started.elapsed();
+    let ns = took.as_nanos() as u64;
+    crate::timeline::called(took);
     add(C::RecordCalls, 1);
     add(C::RecordNs, ns);
     if !RECORDED_SINCE.load(Relaxed) && !RECORDED_SINCE.swap(true, Relaxed) {
@@ -982,6 +1125,7 @@ pub(crate) fn recorded(started: std::time::Instant) {
 /// submission lock).
 pub(crate) fn submission_begins() {
     let now = now_us();
+    INSIDE.fetch_add(1, Relaxed);
     if !SUBMITTED_SINCE.load(Relaxed) && !SUBMITTED_SINCE.swap(true, Relaxed) {
         add(C::UntilSubmitUs, now.saturating_sub(PRESENTED_AT.load(Relaxed)));
     }
@@ -1002,6 +1146,7 @@ pub(crate) fn submission_begins() {
 /// submission lock.
 pub(crate) fn submission_ends(lock: u64) {
     let now = now_us();
+    INSIDE.fetch_sub(1, Relaxed);
     SUBMITTED_AT.store(now, Relaxed);
     let (user, kernel) = thread_times();
     let (u, k) = ENTERED.with(|e| e.get());
@@ -1013,6 +1158,22 @@ pub(crate) fn submission_ends(lock: u64) {
     s.lock += lock;
     s.inside_user += user.saturating_sub(u);
     s.inside_kernel += kernel.saturating_sub(k);
+}
+
+/// The submissions being prepared now.
+static INSIDE: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+
+/// What the frame is at, for the sampling profiler (`VICTORY_PROFILE`): 3
+/// in a submission, else 0 after a present until the first list call, 1 until
+/// the first submission, 2 behind it.
+pub(crate) fn phase() -> u32 {
+    if INSIDE.load(Relaxed) > 0 {
+        3
+    } else if SUBMITTED_SINCE.load(Relaxed) {
+        2
+    } else {
+        u32::from(RECORDED_SINCE.load(Relaxed))
+    }
 }
 
 /// The title calls its present (before our own copy to the window runs).
@@ -1048,15 +1209,12 @@ fn page_faults() -> u64 {
 /// second or more: a 4 s frame after an unlogged 4 s frame showed two
 /// frames' counts as one's).
 pub(crate) fn log(frames: f64) {
-    let counted = COUNT[C::Frames as usize].swap(0, Relaxed);
+    let counted = taken(C::Frames as usize);
     let frames = if counted > 0 { counted as f64 } else { frames };
     static FAULTS: AtomicU64 = AtomicU64::new(0);
     let faults = page_faults();
     let faults = faults - FAULTS.swap(faults, Relaxed).min(faults);
-    let c: Vec<f64> = COUNT
-        .iter()
-        .map(|a| a.swap(0, Relaxed) as f64 / frames)
-        .collect();
+    let c: Vec<f64> = (0..COUNTERS).map(|i| taken(i) as f64 / frames).collect();
     let mb = |v: f64| v / 1e6;
     let ms = |v: f64| v / 1e3;
     tracing::info!(
@@ -1064,7 +1222,7 @@ pub(crate) fn log(frames: f64) {
          {:.0} skipped {:.1} MB; {:.0} runs {:.1} ms; {:.0} queries {:.2} ms, moves {:.2} ms, \
          {:.2} MB unmapped; {:.0} page faults; {:.0} watches {:.2} ms, {:.1} MB checked, {:.1} MB \
          unchanged; {:.1} fallbacks; {:.0} guard faults; textures {:.1} MB watched and \
-         changed, {:.1} MB hashed, {:.1} MB of them changed",
+         changed, {:.1} MB hashed, {:.1} MB of them changed, {:.1} changes the guard did not see",
         c[C::Submissions as usize],
         c[C::Copies as usize],
         mb(c[C::CopyBytes as usize]),
@@ -1088,6 +1246,7 @@ pub(crate) fn log(frames: f64) {
         mb(c[C::TexWatched as usize]),
         mb(c[C::TexHashed as usize]),
         mb(c[C::TexChanged as usize]),
+        c[C::TexHot as usize],
     );
     tracing::info!(
         "recording per frame ({frames:.0} frames): {:.0} list calls {:.1} ms (all recording \
@@ -1115,6 +1274,24 @@ pub(crate) fn log(frames: f64) {
         ms(c[C::PaceUs as usize]),
         c[C::GpuWritesLeftOut as usize],
         mb(c[C::GpuWritesLeftOutBytes as usize]),
+    );
+    let [together, written, mapped] =
+        [0, 1, 2].map(|n| crate::watch::ALIASES[n].load(std::sync::atomic::Ordering::Relaxed));
+    tracing::info!(
+        "guards over several views of a page, since the start: {together} blocks guarded with their other views, \
+         {written} views opened by a write through another, {mapped} ranges opened because a view of them was mapped"
+    );
+    tracing::info!(
+        "waits for the write trackers' locks per frame, all threads (number, time): {}",
+        crate::watch::lock_waits(frames as f64)
+    );
+    let [copies, blocks, opened, stores, unknown, full, stayed, copied_same, records] =
+        [0, 1, 2, 3, 4, 5, 6, 7, 8].map(|n| crate::titlewrite::DONE[n].load(std::sync::atomic::Ordering::Relaxed));
+    tracing::info!(
+        "the title's writes beside the guards, since the start: {copies} copies (VICTORY_COPY_BESIDE=1), {blocks} blocks, {opened} opened; \
+         {stores} stores (VICTORY_STORE_BESIDE=1), {unknown} not understood, {full} blocks opened for too many; left out for changing nothing: {stayed} stores, {copied_same} parts of copies, {records} copies of descriptors; \
+         the busiest stores (left out/changed): {}",
+        crate::titlewrite::busiest()
     );
     // Where the wall clock of a frame goes: the phases of a frame, the
     // processor time of the whole process, and what each submitting and
@@ -1220,21 +1397,23 @@ pub(crate) fn log(frames: f64) {
         }
         kinds.sort_by_key(|k| std::cmp::Reverse(k.2));
         let all: u64 = kinds.iter().map(|k| k.2).sum();
+        // (Nanoseconds: `command_took`.)
         let text: Vec<String> =
-            kinds.iter().map(|(word, n, us)| format!("{word} {:.1} ms in {:.0}", *us as f64 / 1e3 / frames, *n as f64 / frames)).collect();
+            kinds.iter().map(|(word, n, ns)| format!("{word} {:.1} ms in {:.0}", *ns as f64 / 1e6 / frames, *n as f64 / frames)).collect();
         tracing::info!(
             "  the card's time by command (timing run), all {} kinds together: {:.1} ms a frame; by first word: {}",
             by.len(),
-            all as f64 / 1e3 / frames,
+            all as f64 / 1e6 / frames,
             text.join(", ")
         );
     }
-    for (what, (n, us, longest)) in by.into_iter().take(40) {
+    between_lines(frames);
+    for (what, (n, ns, longest)) in by.into_iter().take(40) {
         tracing::info!(
             "  the card's time by command (timing run): {:.2} ms a frame in {:.1} commands a frame, the longest {:.2} ms: {what}",
-            us as f64 / 1e3 / frames,
+            ns as f64 / 1e6 / frames,
             n as f64 / frames,
-            longest as f64 / 1e3
+            longest as f64 / 1e6
         );
     }
     tracing::info!(

@@ -5,9 +5,15 @@
 
 mod census;
 mod inspect;
+#[cfg(windows)]
+mod play;
+#[cfg(all(windows, feature = "diagnostics"))]
+mod replay;
 mod run;
 mod shader;
 mod translate;
+#[cfg(windows)]
+mod warm;
 
 use std::path::PathBuf;
 
@@ -84,7 +90,55 @@ enum Command {
         /// Worker threads (default: every logical core).
         #[arg(long)]
         jobs: Option<usize>,
+        /// Warm the run's shader cache: a file of shader hashes (the 16
+        /// hex digits a run's log names a shader by, anywhere in a line);
+        /// the containers with those hashes are translated into the
+        /// cache and nothing else is done. Set `VICTORY_HOST_WAVE` and
+        /// `VICTORY_VIEW_LIMIT` to what the run's log says of the host.
+        #[arg(long)]
+        warm: Option<PathBuf>,
     },
+    /// Translate every shader found (as `translate` finds them) into the
+    /// shader cache, so that no run has to: a few minutes, once per change
+    /// of the translator.
+    Shaders {
+        paths: Vec<PathBuf>,
+        /// Worker threads (default: every logical core).
+        #[arg(long)]
+        jobs: Option<usize>,
+    },
+    /// Make the host pipelines of every pipeline the title ever created
+    /// (runs with `VICTORY_PIPELINE_BOOK=1` write them down), so that the
+    /// driver's cache on disk has them before a run needs one: once per change
+    /// of the translator or the driver. Goes on where it was stopped.
+    #[cfg(windows)]
+    Warm {
+        /// Processes at once (default: two thirds of the logical cores).
+        #[arg(long)]
+        jobs: Option<usize>,
+        /// At most this many pipelines.
+        #[arg(long)]
+        limit: Option<usize>,
+        /// Those made before too.
+        #[arg(long)]
+        again: bool,
+        /// Only the pipelines earlier runs drew with.
+        #[arg(long)]
+        used: bool,
+        /// (What the processes it starts are given.)
+        #[arg(long, hide = true)]
+        these: Option<String>,
+    },
+    /// Play: the title with this fork's settings, as a start with no
+    /// command at all does (a double click on the program beside the
+    /// title's `game_scarlett_master.exe`). F1 in the game is the settings
+    /// menu, F3 the stats panel.
+    #[cfg(windows)]
+    Play(play::Play),
+    /// Fetch NVIDIA's DLSS and frame generation files from NVIDIA's GitHub
+    /// (about 70 MB) to where `play` looks for them.
+    #[cfg(windows)]
+    GetDlss,
     /// Prepare, map and bind a title executable; with --execute, run it.
     Run {
         exe: PathBuf,
@@ -105,8 +159,30 @@ enum Command {
         #[arg(last = true)]
         title_args: Vec<String>,
     },
+    /// Run a captured frame's GPU work again (diagnostics builds; see
+    /// docs/replay.md).
+    #[cfg(all(windows, feature = "diagnostics"))]
+    Replay(replay::Replay),
     /// Show the resolved configuration and check it.
     Config,
+    /// Check NVIDIA Streamline, DLSS and DLSS Frame Generation on this PC
+    /// without the title (`VICTORY_STREAMLINE_DIR`, `VICTORY_DLSS_MODE`,
+    /// `VICTORY_DLSS_PRESET`): what loads and what this GPU supports; with
+    /// --device, the host device handed over and DLSS run three times on
+    /// stand-in textures; with --present too, three seconds of presents with
+    /// frame generation in a window of ours.
+    #[cfg(windows)]
+    UpscalerCheck {
+        /// The output size, `<width>x<height>`.
+        #[arg(long, default_value = "2560x1440")]
+        output: String,
+        /// Make the host device and run DLSS on it.
+        #[arg(long)]
+        device: bool,
+        /// Present for three seconds with frame generation (with --device).
+        #[arg(long)]
+        present: bool,
+    },
 }
 
 #[derive(Clone, Copy, ValueEnum)]
@@ -122,13 +198,35 @@ enum Console {
 }
 
 fn main() -> Result<()> {
-    victory_core::logging::init("info");
     // The audio recorder `run` starts for `VICTORY_AUDIO_CAPTURE`.
     #[cfg(all(windows, feature = "diagnostics"))]
-    if victory_hle::modules::audio::capture::child() {
-        return Ok(());
+    if std::env::var_os("VICTORY_AUDIO_CAPTURE").is_some() {
+        victory_core::logging::init("info");
+        if victory_hle::modules::audio::capture::child() {
+            return Ok(());
+        }
     }
-    let cli = Cli::parse();
+    // Started with nothing after its name (a double click): play.
+    let bare = std::env::args_os().len() == 1;
+    let cli = if bare && cfg!(windows) { Cli::parse_from(["victory", "play"]) } else { Cli::parse() };
+    // Play puts its settings into the environment and names its log file
+    // before anything else is set up.
+    #[cfg(windows)]
+    if let Command::Play(options) = &cli.command {
+        let done = play::prepare(options).and_then(|ready| {
+            victory_core::logging::init("info");
+            let console = if ready.series_s { Console::SeriesS } else { Console::SeriesX };
+            run::run(&ready.exe, Unimplemented::Trap, false, true, console)
+        });
+        if let Err(e) = &done
+            && bare
+        {
+            eprintln!("Error: {e:#}");
+            play::hold_window();
+        }
+        return done;
+    }
+    victory_core::logging::init("info");
     match cli.command {
         Command::Inspect {
             file,
@@ -152,6 +250,7 @@ fn main() -> Result<()> {
             pipelines,
             list,
             jobs,
+            warm,
         } => {
             // `VICTORY_VIEW_LIMIT=<null slot>`: translate as on a host whose view heap is capped
             if let Some(n) = std::env::var("VICTORY_VIEW_LIMIT").ok().and_then(|v| v.parse().ok()) {
@@ -161,17 +260,43 @@ fn main() -> Result<()> {
             if let Some(n) = std::env::var("VICTORY_HOST_WAVE").ok().and_then(|v| v.parse().ok()) {
                 victory_shader::emit::set_host_max_wave(n);
             }
+            if let Some(file) = warm {
+                return translate::warm(paths, &file, jobs);
+            }
             translate::run(paths, validate, pipelines, list, jobs)
         }
+        Command::Shaders { paths, jobs } => translate::precompile(paths, jobs),
+        #[cfg(windows)]
+        Command::Warm { jobs, limit, again, used, these } => warm::run(jobs, limit, again, used, these),
+        #[cfg(windows)]
+        Command::Play(_) => unreachable!("handled above"),
+        #[cfg(windows)]
+        Command::GetDlss => play::get_dlss(),
         Command::Run {
             exe,
             unimplemented,
             strict,
             execute,
             console,
-            title_args: _,
-        } => run::run(&exe, unimplemented, strict, execute, console),
+            title_args,
+        } => {
+            victory_hle::runtime::set_title_args(title_args);
+            run::run(&exe, unimplemented, strict, execute, console)
+        }
+        #[cfg(all(windows, feature = "diagnostics"))]
+        Command::Replay(options) => replay::run(options),
         Command::Config => show_config(),
+        #[cfg(windows)]
+        Command::UpscalerCheck { output, device, present } => {
+            let size = output
+                .split_once(['x', 'X'])
+                .and_then(|(w, h)| Some([w.trim().parse().ok()?, h.trim().parse().ok()?]))
+                .ok_or_else(|| anyhow::anyhow!("--output {output}: not <width>x<height>"))?;
+            for line in victory_hle::streamline::check(size, device || present, present) {
+                println!("{line}");
+            }
+            Ok(())
+        }
     }
 }
 

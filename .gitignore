@@ -1,7 +1,7 @@
-# Build outputs
-target/
-build/
-runtime/build/
+# Build outputs (in any embedded Rust/CMake workspace)
+**/target/
+**/build/
+**/runtime/build/
 *.pdb
 *.obj
 *.ilk
@@ -38,6 +38,13 @@ used-pipelines.txt
 # Measurement/precompile artifacts (workspace only, never the game directory)
 measurements/
 precompile-commands.txt
+
+# Local launcher output and a user-supplied title executable.
+/bin/
+/game_scarlett_master.exe
+
+# Local settings written by the Victory launcher.
+/victory-fork/victory-settings.txt
 
 # Local configuration
 victory.toml

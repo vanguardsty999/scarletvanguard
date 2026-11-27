@@ -53,12 +53,26 @@ census/inspect → priorizar por chamadas reais (ETW/PIX)
 - Todo stub novo registra a primeira chamada em log para alimentar o censo.
 - Ao trocar um stub por nativo, registrar o antes/depois no runbook de performance.
 
-## Próxima ação concreta (quando o `.exe` terminar de baixar)
+## Censo real do título (já executado)
+
+`xcl inspect` e `victory inspect` sobre `game_scarlett_master.exe` (114,61 MB, PE x64 de Scarlett) encontraram 587 imports de 68 DLLs, dos quais 73 são stubs:
+
+| DLL | Stubs | Trilha recomendada |
+|---|---|---|
+| `libHttpClient.GDK.dll` | 38 | manter stub offline; baixa prioridade para FPS |
+| `Bink2Scarlett.dll` | 23 | Bink 2 / vídeo — implementar após medir se é chamado no prólogo |
+| `XboxBvhBuilder.dll` | 7 | BVH de ray tracing — depende do trabalho de RT do fork |
+| `amd_fidelityfx_loader_xbox.dll` | 4 | FFX/upscaling — candidato a nativo |
+| `xmem.dll` | 1 | completar o HLE de memória |
+
+`victory census <exe> --missing` confirma os mesmos grupos (72 ausentes no victory: 38 libhttpclient, 23 Bink2Scarlett, 7 XboxBvhBuilder, 4 FFX; `xmem.dll` está coberto no victory). Relatórios: `measurements/inspect-game/{xcl-inspect,victory-inspect,victory-census}.txt`. Isto substitui a estimativa inicial: a priorização agora vem de contagem real de imports.
+
+## Próxima ação concreta
 
 ```powershell
-.\scripts\probe-game.ps1 -GameDir "N:\downloads\GTA6.Xbox.v1.0.2.1-CYBERLEEK"
-.\scripts\measure.ps1 -Component xcl -GamePath "...\game_scarlett_master.exe" -Tool etw
-.\scripts\measure.ps1 -Component victory-fork -GamePath "...\game_scarlett_master.exe" -Tool etw
+.\scripts\pso-precompile.ps1 -GameDir "N:\downloads\GTA6.Xbox.v1.0.2.1-CYBERLEEK"
+.\scripts\measure.ps1 -Component xcl -GamePath ".\game_scarlett_master.exe" -Tool etw
+.\scripts\measure.ps1 -Component victory-fork -GamePath ".\game_scarlett_master.exe" -Tool etw
 ```
 
-Com o `census` em mãos, a priorização deve usar contagem de chamadas por export, não intuição.
+Com o `census` em mãos, a priorização deve usar contagem de chamadas por export, não intuição. A tabela acima vem de `xcl inspect` e `victory census`; a contagem de chamadas em runtime ainda exige ETW/PIX.

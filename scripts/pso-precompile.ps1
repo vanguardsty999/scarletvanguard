@@ -15,10 +15,11 @@ Initialize-Msvc
 if (-not (Test-Path -LiteralPath $GameDir)) { throw "Game directory not found: $GameDir" }
 if ([string]::IsNullOrWhiteSpace($OutFile)) { $OutFile = Join-Path $root 'precompile-commands.txt' }
 
-$env:XCL_ADAPTER = 'nvidia'
-$env:VICTORY_ADAPTER = 'nvidia'
-$env:VICTORY_HOST_WAVE = '32'
-$env:VICTORY_HOST_MAX_WAVE = '32'
+. (Join-Path $PSScriptRoot '..\configs\rtx3070-24gb.env.ps1')
+# Precompilation benefits from the same DXC path/thread limits as the runtime.
+Set-ProfileEnv -Preset safe
+# HOST_WAVE / HOST_MAX_WAVE are read only by `victory translate`, not by `victory run`.
+Set-TranslateEnv
 
 Write-Host "PROBE + PREPARE - no game file will be written." -ForegroundColor Cyan
 $packs = @(Get-ChildItem -LiteralPath $GameDir -Recurse -File -Force -ErrorAction SilentlyContinue |

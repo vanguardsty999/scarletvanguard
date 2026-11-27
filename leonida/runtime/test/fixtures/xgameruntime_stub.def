@@ -1,6 +1,0 @@
-EXPORTS
-    XAsyncGetStatus
-    XAsyncRun
-    XTaskQueueCloseHandle
-    XTaskQueueCreate
-    XTaskQueueDispatch

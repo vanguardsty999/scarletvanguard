@@ -14,7 +14,7 @@ Write-Host "XRMLX-Fusion validation - $root" -ForegroundColor Cyan
 $markers = @{
     'leonida'      = @('make_game.py', 'LICENSE')
     'xcl'          = @('Cargo.toml', 'LICENSE')
-    'victory-fork' = @('Cargo.toml', 'LICENSE')
+    'victory-fork' = @('Cargo.toml', 'LICENSE', '.victory-root')
 }
 
 foreach ($name in @('leonida', 'xcl', 'victory-fork')) {
@@ -30,8 +30,12 @@ foreach ($name in @('leonida', 'xcl', 'victory-fork')) {
 Write-Host "`n[preparation docs/scripts]" -ForegroundColor Cyan
 $prep = @(
     'docs\PLATFORM_ABSTRACTION.md', 'docs\PERF_RUNBOOK.md',
+    'docs\HARDWARE_PROFILE_RTX3070.md', 'docs\XBOX_PARTICULARITIES.md',
     'scripts\probe-game.ps1', 'scripts\pso-precompile.ps1',
-    'scripts\measure.ps1', 'scripts\affinity.ps1'
+    'scripts\measure.ps1', 'scripts\affinity.ps1',
+    'configs\rtx3070-24gb.env.ps1', 'scripts\optimize-rtx3070.ps1',
+    'scripts\build-launcher.ps1', 'scripts\launcher\ScarletVanguardLauncher.cs',
+    'scripts\victory-nvidia.ps1'
 )
 foreach ($item in $prep) { Check-Item (Test-Path (Join-Path $root $item)) "$item present" }
 
@@ -42,9 +46,9 @@ $nested = Get-ChildItem $root -Recurse -Force -ErrorAction SilentlyContinue |
 Check-Item ($null -eq $nested) "no internal .git/submodule metadata ($(@($nested).Count) found)"
 
 Write-Host "`n[policy: no game data]" -ForegroundColor Cyan
-$forbidden = Get-ChildItem $root -Recurse -File -Force -Include '*.exe','*.rpf','*.xvc','*.msixvc','*.ttpf','*.bk2','*.awc','*.bvh4' -ErrorAction SilentlyContinue |
+$forbidden = Get-ChildItem $root -Recurse -File -Force -Include '*.exe','*.dll','*.rpf','*.xvc','*.msixvc','*.ttpf','*.bk2','*.awc','*.bvh4' -ErrorAction SilentlyContinue |
     Where-Object { $_.FullName -notmatch '\\(target|build)\\' }
-Check-Item ($null -eq $forbidden) "no game executables/packages outside build output ($(@($forbidden).Count) files)"
+Check-Item ($null -eq $forbidden) "no executables, libraries, or game packages outside build output ($(@($forbidden).Count) files)"
 
 Write-Host "`n[build tools]" -ForegroundColor Cyan
 . (Join-Path $PSScriptRoot 'msvc.ps1')

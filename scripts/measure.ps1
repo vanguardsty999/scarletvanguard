@@ -19,16 +19,9 @@ if ([string]::IsNullOrWhiteSpace($SessionDir)) {
 New-Item -ItemType Directory -Force -Path $SessionDir | Out-Null
 
 # NVIDIA profile + trace variables. Nothing here touches the game directory.
-$env:XCL_ADAPTER = 'nvidia'
-$env:XCL_PSO_TRACE = '1'
-$env:XCL_DRED = '1'
-$env:XCL_FRAME_DUMP = '2'
-$env:VICTORY_ADAPTER = 'nvidia'
-$env:VICTORY_HOST_WAVE = '32'
-$env:VICTORY_HOST_MAX_WAVE = '32'
-$env:VICTORY_GPU_TIMING = '1'
-$env:VICTORY_PIPELINE_WAIT_MS = '24'
-$env:VICTORY_D3D12_DRED = '1'
+# HOST_WAVE/HOST_MAX_WAVE are translate-only; runtime measurement does not use them.
+. (Join-Path $PSScriptRoot '..\configs\rtx3070-24gb.env.ps1')
+Set-ProfileEnv -Preset safe -Trace
 
 Write-Host "Measurement session: $SessionDir" -ForegroundColor Cyan
 Write-Host "Component: $Component | Tools: $Tool" -ForegroundColor Cyan

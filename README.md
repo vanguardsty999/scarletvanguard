@@ -1,93 +1,96 @@
-# XRMLX-Fusion
+# XRMLX Fusion
 
-Versão **achatada** do XRMLX. Os três projetos que antes viviam como submodules separados — **Leonida Continued**, **XCL** e **victory-fork** — foram copiados para um único diretório, sem `.git` interno e sem estrutura de submodule.
+> **Experimental Xbox Series compatibility runtime for Windows x64**
 
-> **Aviso importante.** Esta é uma árvore de trabalho **privada e não redistribuível**. Cada componente mantém sua licença original em `leonida/LICENSE`, `xcl/LICENSE` e `victory-fork/LICENSE`. Como o XCL é `GPL-2.0-only` e os outros dois são GPLv3, juntá-los numa única obra derivada não é legalmente distribuível. A fusão foi feita apenas para experimento local, conforme solicitado.
+XRMLX Fusion is a research workspace for studying how Xbox Series workloads can
+be hosted on a Windows x64 PC. It keeps independent compatibility-layer
+implementations together with reproducible build, diagnostics, shader-cache and
+launch tooling.
 
-## O que é — e o que não é
+This is experimental software. Rendering correctness, performance and title
+compatibility are actively under investigation; it is not a production emulator
+or an official product.
 
-É uma **justaposição física** dos três fontes em pastas com nomes distintos, com um único repositório Git no topo e um build unificado.
+## Project status
 
-**Não é uma integração funcional.** Leonida é C++/Python com Vulkan/SPIR-V, XCL é Rust com D3D12.X/DXIL e victory-fork é Rust com D3D12/DXIL. Fundir essas implementações em um único executável exigiria reescrever manualmente uma das arquiteturas; isso não aconteceu aqui.
+| Area | Status |
+| --- | --- |
+| Windows x64 toolchain | Validated with Rust/MSVC |
+| D3D12 compatibility paths | Experimental |
+| NVIDIA RTX 3070 profile | Tuned conservatively for 8 GB VRAM |
+| Shader and pipeline warm-up | Available offline, with progress reporting |
+| Ray tracing / advanced water paths | Disabled by the safe profile |
+| Game compatibility | Per-title, incomplete and not guaranteed |
 
-## Origem dos arquivos
+## Architecture
 
-| Pasta | Origem (snapshot 24/11/2026) | HEAD de origem |
-|---|---|---|
-| `leonida/` | `ubiquitarianism/leonida` + submodule `rpf9-explorer` | `4a50cafc7af8b5a842c85a3794b286232495068d` |
-| `xcl/` | `xcl-dev/xcl` | `1d027e5c76c9a86a7ee2ca1cc677edf0be95d331` |
-| `victory-fork/` | `fxceless/victory-fork` | `c96b4f2b8365bf43d54ab074940923ef8267f4c6` |
-
-O agregado original com histórico e submodules continua intacto em `..\XRMLX`.
-
-## Estrutura
-
-```
-XRMLX-Fusion/
-├── README.md
-├── .gitignore
-├── docs/
-│   ├── README.md              # índice
-│   ├── PLATFORM_ABSTRACTION.md # XDK → Win32 / shim incremental
-│   └── PERF_RUNBOOK.md        # PIX, VTune, ETW, PSO e afinidade
-├── scripts/
-│   ├── validate.ps1       # confere estrutura e ausência de dados de jogo
-│   ├── refresh.ps1        # recopia os fontes de ..\XRMLX para cá
-│   ├── msvc.ps1           # inicializa o ambiente C++ (vcvars64) para cargo
-│   ├── build.ps1          # build unificado dos três componentes
-│   ├── nvidia.ps1         # perfil NVIDIA: seleção de adaptador + launch
-│   ├── probe-game.ps1     # inventário SOMENTE LEITURA do jogo
-│   ├── pso-precompile.ps1 # prepara comandos de precompilação (não executa)
-│   ├── measure.ps1        # prepara sessão PIX/VTune/ETW (não lança o jogo)
-│   └── affinity.ps1       # inicia/ajusta afinidade de processo/threads
-├── leonida/           # fonte achatado, inclui third_party/rpf9-explorer
-├── xcl/               # fonte achatado
-└── victory-fork/      # fonte achatado
+```text
+Xbox Series title
+       |
+       +-- HLE / loader / XDK surface emulation
+       |
+       +-- Shader translation and pipeline cache
+       |
+       +-- DirectStorage-style asset streaming
+       v
+Windows x64 + D3D12 + DXGI + NVIDIA driver
 ```
 
-## Uso rápido (PowerShell)
+The repository deliberately keeps multiple research implementations separate:
+
+| Directory | Responsibility |
+| --- | --- |
+| `xcl/` | D3D12.X / DXIL compatibility-layer research |
+| `victory-fork/` | Current NVIDIA-oriented runtime, streaming and pipeline experiments |
+| `leonida/` | Vulkan-oriented research path |
+| `scripts/` | Reproducible build, validation, measurement and launch tooling |
+| `configs/` | Hardware profiles |
+| `docs/` | Architecture notes, diagnosis and performance evidence |
+
+## Quick start
+
+Requirements: Windows x64, Rust/MSVC toolchain and a legally obtained title
+stored outside this repository.
 
 ```powershell
-cd C:\Users\rafae\Desktop\XRMVI\XRMLX-Fusion
-.\scripts\validate.ps1
-.\scripts\build.ps1 -Component leonida          # só checa ferramentas/ajuda
-.\scripts\build.ps1 -Component xcl
-.\scripts\build.ps1 -Component victory-fork
-.\scripts\build.ps1 -Component all -GameDir "D:\seu\jogo"
-.\scripts\nvidia.ps1 -Component xcl -GamePath "D:\seu\jogo"
-.\scripts\nvidia.ps1 -Component victory-fork -GamePath "D:\seu\jogo\game_scarlett_master.exe"
+./scripts/validate.ps1
+./scripts/build.ps1 -Component victory-fork
+
+# Offline cache preparation. Run only while victory.exe is closed.
+./scripts/victory-nvidia.ps1 -GameExe 'D:\Games\Title\game_scarlett_master.exe' -Preload
+
+# Launch with the conservative RTX 3070 profile.
+./scripts/victory-nvidia.ps1 -GameExe 'D:\Games\Title\game_scarlett_master.exe'
 ```
 
-Um build real exige uma **cópia do jogo pertencente ao usuário**; nenhum arquivo de jogo foi copiado para esta árvore.
+The safe profile selects the NVIDIA adapter, uses the Series S rendering path,
+limits texture pressure for 8 GB VRAM, uses on-demand texture levels and keeps
+experimental ray tracing and water-light paths off.
 
-Preparação para o jogo em download (`N:\downloads\GTA6.Xbox.v1.0.2.1-CYBERLEEK`) — nada abaixo altera o jogo:
+## Performance model
 
-```powershell
-.\scripts\probe-game.ps1 -GameDir "N:\downloads\GTA6.Xbox.v1.0.2.1-CYBERLEEK"
-.\scripts\pso-precompile.ps1 -GameDir "N:\downloads\GTA6.Xbox.v1.0.2.1-CYBERLEEK"
-.\scripts\measure.ps1 -Component xcl -GamePath "...\game_scarlett_master.exe" -Tool all
-.\scripts\affinity.ps1 -ProcessName victory -Cores 0-7
-```
+The first run is expected to be slower while shader translations and D3D12
+pipelines are cached. Use the offline warm-up before comparing performance.
+Asset streaming remains a separate cost: the Xbox design combines asynchronous
+storage, decompression and tiled texture residency, while the Windows layer
+must reproduce that behavior through DirectStorage-style queues and D3D12
+reserved resources.
 
-A estratégia e o runbook estão em [`docs/`](docs/README.md).
+Read [Xbox Streaming and D3D12](docs/XBOX_STREAMING_AND_DX12.md) for the
+evidence-backed model and [Performance Runbook](docs/PERF_RUNBOOK.md) for
+measurement steps.
 
-## Integração D3D12 / toolchain C++ / perfil NVIDIA
+## Repository policy
 
-- `msvc.ps1` localiza o Visual Studio Build Tools via `vswhere`, aplica `vcvars64.bat` ao processo e coloca `%USERPROFILE%\.cargo\bin` no `PATH`. É isso que permite ao `cargo` encontrar `cl.exe`/`link.exe` sem abrir um *Developer Prompt*.
-- `build.ps1` já invoca essa inicialização antes de compilar XCL e victory-fork.
-- **XCL** já suportava seleção de GPU via `XCL_ADAPTER` (índice ou substring do nome, ex.: `nvidia`).
-- **victory-fork** recebeu uma mudança pontual em `crates/victory-gpu/src/host.rs`: nova variável `VICTORY_ADAPTER` com a mesma semântica, ignorando adaptadores de software (WARP). O padrão continua sendo `auto`.
-- `nvidia.ps1` define `XCL_ADAPTER=nvidia`, `VICTORY_ADAPTER=nvidia` e força `VICTORY_HOST_WAVE=32` / `VICTORY_HOST_MAX_WAVE=32`, que é o caminho de wave64-em-32-lanes usado em GPUs NVIDIA.
+- No game executables, assets, shaders, dumps, caches, logs or downloaded SDKs
+  are committed.
+- Build outputs are ignored and recreated locally.
+- Each embedded source tree retains its own license and attribution.
+- Do not publish title-derived material or claim compatibility results that
+  were not measured on the target hardware.
 
-### O que foi realmente verificado
+## License and attribution
 
-- Rust `stable-x86_64-pc-windows-msvc` 1.100.0 instalado; `cargo`, `rustc`, `cl` e `link` disponíveis.
-- `cargo build --release --workspace` no XCL: **concluído**, `xcl\target\release\xcl.exe` (8,57 MB), `--help` executado.
-- `cargo build --release -p victory` no victory-fork: **concluído**, `victory-fork\target\release\victory.exe` (7,46 MB), `--help`/`--version` executados. O fork recebeu 4 commits novos (`2119b0e` → `c96b4f2`: depth bounds, defaults mais rápidos, texturas de pele/cabelo e correções de forks colaboradores); a árvore foi sincronizada e o patch `VICTORY_ADAPTER` reaplicado sobre `host.rs`. Avisos do compilador no XCL (`fetch_update` deprecado) não foram alterados.
-- **Não foi executado nenhum teste de GPU e nenhum jogo**: não há jogo fornecido nesta máquina. "Funcional para NVIDIA" aqui significa toolchain + seleção de adaptador + binários compilados prontos para o jogo do usuário, **não** uma sessão de gameplay validada.
-
-## Pré-requisitos nesta máquina
-
-- Presentes: Git, Python, CMake, .NET, Node, ffmpeg, `vulkaninfo`, Rust/MSVC, `cl`/`link`.
-- Ainda ausentes para o Leonida: `spirv-val`, `llvm-mc` com alvo AMDGPU no PATH.
-- `C:` tem ~189 GB livres: o build completo do Leonida (~400 GB) não cabe; use `--stages check,shaders,runtime` (~30 GB), de preferência com `--work` em outra unidade.
+XRMLX Fusion is an aggregation of independent research components. Consult the
+license and notices within each source tree before redistribution or derivative
+work.
