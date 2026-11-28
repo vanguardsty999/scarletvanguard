@@ -3,6 +3,24 @@
 version = 4
 
 [[package]]
+name = "VanguardScarletX"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "blake3",
+ "clap",
+ "memchr",
+ "victory-core",
+ "victory-formats",
+ "victory-game",
+ "victory-hle",
+ "victory-loader",
+ "victory-pe",
+ "victory-shader",
+ "walkdir",
+]
+
+[[package]]
 name = "aho-corasick"
 version = "1.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -627,24 +645,6 @@ name = "valuable"
 version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ba73ea9cf16a25df0c8caa16c51acb937d5712a8429db78a3ee29d5dcacd3a65"
-
-[[package]]
-name = "victory"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "blake3",
- "clap",
- "memchr",
- "victory-core",
- "victory-formats",
- "victory-game",
- "victory-hle",
- "victory-loader",
- "victory-pe",
- "victory-shader",
- "walkdir",
-]
 
 [[package]]
 name = "victory-core"

@@ -165,7 +165,7 @@ commit and its author.
 
 - **[VIctory](https://github.com/Marvisak/VIctory)** by Marvisak and its contributors: the loader, the runtime
   services, the Direct3D 12 back end and the shader recompiler.
-- **[fxceless/src/victory](https://github.com/fxceless/src/victory)** and the people whose pull requests it carries.
+- **[fxceless/victory-fork](https://github.com/fxceless/victory-fork)** and the people whose pull requests it carries.
 - **[avatarmanz/VIctory-7900XTX](https://github.com/avatarmanz/VIctory-7900XTX)**: the submission line, write
   guards, relay and much of the speed work this fork starts from.
 - **[codec-d/cool_fox](https://github.com/codec-d/cool_fox)**: the base this fork was taken from.

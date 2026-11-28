@@ -47,11 +47,11 @@ function Set-ProfileEnv {
     $env:XCL_DSTORAGE_MEMORY_BUDGET_MIB = if ($Preset -eq 'safe') { '32' } else { '64' }
     $env:XCL_DSTORAGE_WORKERS = if ($Preset -eq 'safe') { '2' } else { '4' }
 
-    # src/victory: source references in src/victory/crates/victory-gpu/src/*
+    # victory-fork: source references in victory-fork/crates/victory-gpu/src/*
     $env:VICTORY_ADAPTER = 'nvidia'
     $env:VICTORY_CACHE_DIR = $Profile.Paths.VictoryCacheDir
     $env:VICTORY_DATA_DIR = $Profile.Paths.VictoryDataDir
-    # The console reports 3840x2160 by default in src/victory. Tell the title
+    # The console reports 3840x2160 by default in victory-fork. Tell the title
     # it is on a 720p display so it picks smaller render targets.
     $env:VICTORY_DISPLAY_MODE = '1280x720'
     $env:VICTORY_PIPELINE_WAIT_MS = '24'
@@ -62,7 +62,7 @@ function Set-ProfileEnv {
     $env:VICTORY_CARD_BUFFERS = '1'
 
     if ($Preset -eq 'safe') {
-        # Documented in src/victory/README.md as the lower-memory path.
+        # Documented in victory-fork/README.md as the lower-memory path.
         $env:VICTORY_WIDE_BACK = '0'
         $env:VICTORY_LATE_WAIT = '0'
         $env:VICTORY_CARD_BUFFERS_MIN_MB = '1'

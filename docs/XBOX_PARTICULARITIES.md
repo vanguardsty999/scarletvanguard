@@ -1,6 +1,6 @@
 # Particularidades Xbox Scarlett → Windows
 
-Pesquisa feita em 26/11/2026 cruzando **código desta árvore** (XCL e src/victory) com documentação pública Microsoft/AMD/XCL. O objetivo é separar:
+Pesquisa feita em 26/11/2026 cruzando **código desta árvore** (XCL e victory-fork) com documentação pública Microsoft/AMD/XCL. O objetivo é separar:
 
 - **[V]** verificado no fonte ou no sistema desta máquina;
 - **[D]** documentado externamente, mas não medido aqui;
@@ -16,9 +16,9 @@ Nada aqui foi executado dentro do jogo. Não há medição de FPS, PIX, VTune ou
 |---|---|---|
 | Shader / PSO | Manter PSO assíncrono, lazy e preload; limitar compilações "huge"; usar DXC 1.8; aquecer cache antes de jogar | [V] + [D] |
 | Wave64 → Wave32 | RTX 3070 tem waves de 32 lanes; a tradução divide cada wave64 do console em duas metades e troca máscaras/valores. Isso é correto, mas mais caro | [D] + [V] |
-| Render distance | **Não existe variável de "distância de renderização"** em XCL/src/victory. Culling/LOD é lógica do jogo em shaders de mesh/amplification | [V] + [D] |
-| Resolução | src/victory reporta **3840x2160** ao título por padrão; agora o perfil força `VICTORY_DISPLAY_MODE=1280x720` | [V] |
-| Cache | XCL e src/victory têm caches próprios em disco; chaves de cache incluem flags de tradução. Não mexer debug/switches no runtime | [V] |
+| Render distance | **Não existe variável de "distância de renderização"** em XCL/victory-fork. Culling/LOD é lógica do jogo em shaders de mesh/amplification | [V] + [D] |
+| Resolução | victory-fork reporta **3840x2160** ao título por padrão; agora o perfil força `VICTORY_DISPLAY_MODE=1280x720` | [V] |
+| Cache | XCL e victory-fork têm caches próprios em disco; chaves de cache incluem flags de tradução. Não mexer debug/switches no runtime | [V] |
 | Memória / swap | Console tem UMA de 16 GB; RTX 3070 tem 8 GB dedicados. Passar do orçamento faz o Windows mover heaps para RAM e pode congelar o processo | [V] + [D] |
 | Pagefile | 17 GB atuais são insuficientes para um título que já chegou a ~24 GB no upstream; recomendado 48–64 GB (admin + reboot) | [V] |
 
@@ -47,7 +47,7 @@ Interpretação prática: o gargalo provável não é "shader lento", mas **PSO 
 
 > `--precompile --pipelines` existe em `xcl/crates/xcl/src/shaders.rs:894-899`, embora não apareça no `--help`.
 
-### 2.2 src/victory — controles verificados
+### 2.2 victory-fork — controles verificados
 
 | Variável | Padrão | O que faz | Onde |
 |---|---:|---|---|
@@ -92,7 +92,7 @@ O README do XCL recomenda DXC ≥ 1.8: DXC 1.7 gerou DXIL 2–2,7× maior e PSOs
 
 ### 3.1 Negativo verificado [V]
 
-Não existe nenhuma variável de ambiente em XCL ou src/victory com `DISTANCE`, `DRAW`, `RENDER`, `LOD`, `CULL`, `FSR`, `UPSCAL` ou equivalente para distância de desenho. Também não há switch de runtime para FSR/upscaling.
+Não existe nenhuma variável de ambiente em XCL ou victory-fork com `DISTANCE`, `DRAW`, `RENDER`, `LOD`, `CULL`, `FSR`, `UPSCAL` ou equivalente para distância de desenho. Também não há switch de runtime para FSR/upscaling.
 
 O que existe:
 
@@ -108,7 +108,7 @@ O título vem de um build `Gaming.Xbox.Scarlett.x64` e o census mostra `XboxBvhB
 
 ### 3.2 O que é externo [D]
 
-O sample público `Dynamic LOD` do GDK faz frustum culling e seleção de LOD **dentro de amplification + mesh shaders**, com a CPU apenas fornecendo instâncias. Ou seja: "render distance" em Series é lógica do jogo/GPU, não uma opção do sistema operacional nem uma variável do compatibilizador. A RTX 3070 tem mesh shaders (Turing+), então o caminho de geometria do XCL é elegível; o src/victory, porém, ainda está incompleto nessa área.
+O sample público `Dynamic LOD` do GDK faz frustum culling e seleção de LOD **dentro de amplification + mesh shaders**, com a CPU apenas fornecendo instâncias. Ou seja: "render distance" em Series é lógica do jogo/GPU, não uma opção do sistema operacional nem uma variável do compatibilizador. A RTX 3070 tem mesh shaders (Turing+), então o caminho de geometria do XCL é elegível; o victory-fork, porém, ainda está incompleto nessa área.
 
 Fontes:
 - `learn.microsoft.com/en-us/samples/microsoft/xbox-gdk-samples/dynamiclod`
@@ -117,7 +117,7 @@ Fontes:
 
 ### 3.3 Ajuste aplicado [V]
 
-`VICTORY_DISPLAY_MODE=1280x720` foi adicionado ao perfil. Sem isso, o src/victory dizia ao título que o monitor era 4K — um erro de dimensão que aumenta render targets sem aumentar qualidade percebida numa janela de teste. A faixa aceita pelo código é 640–7680 × 360–4320. Não mexemos em culling/LOD porque não há controle verificável; qualquer "distância menor" seria [H].
+`VICTORY_DISPLAY_MODE=1280x720` foi adicionado ao perfil. Sem isso, o victory-fork dizia ao título que o monitor era 4K — um erro de dimensão que aumenta render targets sem aumentar qualidade percebida numa janela de teste. A faixa aceita pelo código é 640–7680 × 360–4320. Não mexemos em culling/LOD porque não há controle verificável; qualquer "distância menor" seria [H].
 
 ---
 
@@ -130,7 +130,7 @@ Fontes:
 | DXIL traduzido | `%LOCALAPPDATA%\xcl\dxil` (`XCL_DXIL_CACHE`) | `dxc.rs:566-573` |
 | PSO do driver | dentro da pasta DXIL, subpasta `driver` (`XCL_PSO_DISK_CACHE`) | `real.rs:3916,3934` |
 | Tradução XCL | `XCL_TRANSLATED_CACHE`, chave inclui backend, heap windows, per-lane e ID do compilador | `pso.rs:171-246` |
-| src/victory | `VICTORY_CACHE_DIR=F:\victory-cache`, `VICTORY_DATA_DIR=F:\victory-data` | `victory-core/src/config.rs:88-95` |
+| victory-fork | `VICTORY_CACHE_DIR=F:\victory-cache`, `VICTORY_DATA_DIR=F:\victory-data` | `victory-core/src/config.rs:88-95` |
 | Biblioteca de PSO victory | mapeada, handle aberto, trim ligado, lock desligado | `pipeline/library.rs` (tabela acima) |
 
 A identidade do cache victory inclui exe BLAKE3, limites de loop/view, `VICTORY_GROUP_SYNC`, wave e bits de `VICTORY_SHADER_OPT`. Por isso **não alternar `SHADER_OPT`/`GROUP_SYNC` entre execuções comparativas sem esperar repovoar o cache** — o resultado de performance ficaria contaminado.
@@ -169,7 +169,7 @@ Fontes:
 
 DirectStorage no Windows 1.1 usa **GDeflate** com descompressão na GPU quando o destino é recurso D3D12; se o destino é memória do sistema, usa CPU. Não é o mesmo formato do BCPack do console. O XCL implementa BCPack para os dados do título, então a tradução do caminho de streaming é necessária — não há uma env var que "ative" isso.
 
-### 5.2 Controles verificados no src/victory [V]
+### 5.2 Controles verificados no victory-fork [V]
 
 | Variável | Padrão real no código | Efeito / onde |
 |---|---:|---|
@@ -216,9 +216,9 @@ Pagefile atual: 17.408 MB. Recomendação mantida: **48–64 GB**. Isso não foi
 - `xcl/crates/xcl/src/hle/d3d12x/pso_async.rs`
 - `xcl/crates/xcl/src/hle/d3d12x/real.rs`
 - `xcl/crates/xcl/src/gpu/recomp/dxc.rs`, `pso.rs`
-- `src/victory/crates/victory-shader/src/emit/mod.rs`
-- `src/victory/crates/victory-gpu/src/{pipeline/make.rs,pipeline/library.rs,resource.rs,shadow.rs,dxgi.rs}`
-- `src/victory/README.md` — estado real de FPS/RT
+- `victory-fork/crates/victory-shader/src/emit/mod.rs`
+- `victory-fork/crates/victory-gpu/src/{pipeline/make.rs,pipeline/library.rs,resource.rs,shadow.rs,dxgi.rs}`
+- `victory-fork/README.md` — estado real de FPS/RT
 
 **Externas**
 - https://github.com/microsoft/GDK — diferença GDK vs GDKX (driver gráfico e compilador de shader)
@@ -242,4 +242,4 @@ Pagefile atual: 17.408 MB. Recomendação mantida: **48–64 GB**. Isso não foi
 4. Pagefile 48–64 GB (admin + reboot).
 5. Instalar PIX, VTune e Windows Performance Toolkit (`xperf` está ausente; `wpr.exe` existe).
 
-Até que isso aconteça, qualquer número de FPS — inclusive os 2–4 fps do README do src/victory e os ~28–30 fps do XCL — é **relato upstream, não resultado desta máquina**.
+Até que isso aconteça, qualquer número de FPS — inclusive os 2–4 fps do README do victory-fork e os ~28–30 fps do XCL — é **relato upstream, não resultado desta máquina**.

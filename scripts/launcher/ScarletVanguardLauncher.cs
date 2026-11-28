@@ -22,7 +22,20 @@ namespace ScarletVanguardLauncher
     {
         // The launcher may be moved with the repository.  Resolve the root from bin\ instead
         // of pinning a developer machine path into a distributable binary.
-        public static string Repo { get { return Directory.GetParent(AppDomain.CurrentDomain.BaseDirectory).FullName; } }
+        public static string Repo
+        {
+            get
+            {
+                DirectoryInfo directory = new DirectoryInfo(AppDomain.CurrentDomain.BaseDirectory);
+                while (directory != null)
+                {
+                    if (Directory.Exists(Path.Combine(directory.FullName, "scripts")) &&
+                        Directory.Exists(Path.Combine(directory.FullName, "src"))) return directory.FullName;
+                    directory = directory.Parent;
+                }
+                throw new DirectoryNotFoundException("Raiz Scarlet Vanguard ausente: mantenha o launcher junto de scripts e src.");
+            }
+        }
         public const string DefaultGame = "";
         public const string ExpectedExeSha256 = "";
         public const string DxcDir = @"C:\Program Files (x86)\Windows Kits\10\bin\10.0.26100.0\x64";
@@ -398,6 +411,12 @@ namespace ScarletVanguardLauncher
                 }
                 else if (autoPrecompile && !v.ManifestOk)
                 {
+                    if (autoStart)
+                    {
+                        Log("Preparando shaders antes da inicializacao automatica.");
+                        UpdateShaders();
+                        return;
+                    }
                     Log("Pre-compilacao completa de shaders necessaria. Clique em Atualizar shaders antes de iniciar.");
                 }
             });
@@ -1100,7 +1119,7 @@ namespace ScarletVanguardLauncher
 
         private string RunCaptured(string exe, string args, string logPath, bool showPrecompileProgress = false)
         {
-            if (!File.Exists(exe)) throw new FileNotFoundException("Tool not found", exe);
+            if (!File.Exists(exe)) throw new FileNotFoundException("Runtime ausente: " + exe + ". Execute scripts\\build.ps1 -Component xcl antes de atualizar shaders.", exe);
             Directory.CreateDirectory(Path.GetDirectoryName(logPath));
             ProcessStartInfo psi = new ProcessStartInfo(exe, args);
             psi.WorkingDirectory = Paths.Repo;
@@ -1269,11 +1288,16 @@ namespace ScarletVanguardLauncher
 
         private void LoadSplash(string path)
         {
+            Image previous = splash.Image;
+            splash.Image = null;
+            if (previous != null) previous.Dispose();
+            foreach (string candidate in new string[] { path, Paths.BrandImage })
+            {
             try
             {
-                if (!string.IsNullOrEmpty(path))
+                if (!string.IsNullOrEmpty(candidate))
                 {
-                    byte[] bytes = File.ReadAllBytes(path);
+                    byte[] bytes = File.ReadAllBytes(candidate);
                     using (MemoryStream stream = new MemoryStream(bytes))
                     using (Image image = Image.FromStream(stream))
                     {
@@ -1293,6 +1317,7 @@ namespace ScarletVanguardLauncher
                 }
             }
             catch (Exception) { }
+            }
             splash.Image = Placeholder();
         }
 

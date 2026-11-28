@@ -1,7 +1,7 @@
 param(
     [ValidateSet('safe','speed')]
     [string]$Preset = 'safe',
-    [ValidateSet('none','xcl','victory')]
+    [ValidateSet('none','xcl','victory-fork')]
     [string]$Component = 'xcl',
     [string]$GamePath = '',
     [switch]$Trace,
@@ -66,7 +66,7 @@ if ($Component -ne 'none') {
         $exe = Join-Path $root 'src\xcl\target\release\xcl.exe'
         $argLine = 'run "' + $GamePath + '"'
     } else {
-        $exe = Join-Path $root 'src\victory\target\release\victory.exe'
+        $exe = Join-Path $root 'src\victory-fork\target\release\VanguardScarletX.exe'
         $argLine = 'run "' + $GamePath + '" --execute'
     }
 }
@@ -85,7 +85,7 @@ if (-not $Launch) {
     return
 }
 
-if ($Component -eq 'none') { throw '-Launch requires -Component xcl or victory.' }
+if ($Component -eq 'none') { throw '-Launch requires -Component xcl or victory-fork.' }
 if ([string]::IsNullOrWhiteSpace($GamePath)) { throw '-Launch requires -GamePath.' }
 if (-not (Test-Path -LiteralPath $GamePath)) { throw "Game executable not found: $GamePath" }
 if (-not (Test-Path -LiteralPath $exe)) { throw "Build missing: $exe" }

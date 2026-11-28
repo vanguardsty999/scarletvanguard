@@ -171,7 +171,7 @@ This repository did not come from one place, and the base it stands on today
 is the end of a long comparison, not the start of the work. Over several weeks
 we built, ran and measured many projects on the same NVIDIA PC: an earlier layer project,
 [Marvisak's VIctory](https://github.com/Marvisak/VIctory),
-[fxceless's fork](https://github.com/fxceless/src/victory),
+[fxceless's fork](https://github.com/fxceless/victory-fork),
 [the 7900 XTX fork](https://github.com/avatarmanz/VIctory-7900XTX),
 [Belobug's](https://github.com/Belobug/VIctory-Belobug-AMD),
 [DexNom's](https://github.com/DexNom/VIctory),
@@ -399,7 +399,7 @@ A tree of other people's work with a little on top; the history is kept.
 - **[VIctory](https://github.com/Marvisak/VIctory)** by Marvisak and its
   contributors: the loader, the runtime services, the Direct3D 12 back end and
   the shader recompiler.
-- **[fxceless/src/victory](https://github.com/fxceless/src/victory)**,
+- **[fxceless/victory-fork](https://github.com/fxceless/victory-fork)**,
   **[avatarmanz/VIctory-7900XTX](https://github.com/avatarmanz/VIctory-7900XTX)**,
   **[codec-d/cool_fox](https://github.com/codec-d/cool_fox)**,
   **[DexNom/VIctory](https://github.com/DexNom/VIctory)**,

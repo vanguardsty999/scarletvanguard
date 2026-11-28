@@ -10,9 +10,9 @@ if not exist "%VICTORY_GAME_DIR%\game_scarlett_master.exe" (
   exit /b 2
 )
 set "runner=%~dp0victory-3d-rtx-pareto-residency.exe"
-if not exist "%runner%" set "runner=%~dp0target\release\victory.exe"
+if not exist "%runner%" set "runner=%~dp0target\release\VanguardScarletX.exe"
 if not exist "%runner%" (
-  echo Extract the Windows release or run cargo build --release --locked -p victory. 1>&2
+  echo Extract the Windows release or run cargo build --release --locked -p VanguardScarletX. 1>&2
   exit /b 2
 )
 if not defined VICTORY_AMBIENT_AIR set "VICTORY_AMBIENT_AIR=1.5"

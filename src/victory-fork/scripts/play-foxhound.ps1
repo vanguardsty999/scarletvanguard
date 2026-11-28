@@ -122,15 +122,15 @@ $settings.VICTORY_MENU_FILE = $menuFile
 $settings.VICTORY_MENU_PLAY = $MyInvocation.MyCommand.Path
 $settings.VICTORY_MENU_ARGS = "-Exe '$($Exe -replace "'", "''")' -Build $Build$(if ($NoFrameGenReady) { ' -NoFrameGenReady' })"
 
-$victory = Join-Path $repo "target\$Build\victory.exe"
+$victory = Join-Path $repo "target\$Build\VanguardScarletX.exe"
 if (-not (Test-Path $victory)) {
     # Not built yet: built here, once.
     if (-not (Get-Command cargo -ErrorAction SilentlyContinue)) { Write-Host "No $victory, and no cargo to build it with: install Rust (README), then start this again."; return }
     Write-Host 'Building the layer (a few minutes the first time) ...'
     Push-Location $repo
     try {
-        if ($Build -eq 'diag') { cargo build --locked --profile diag -p victory --features diagnostics }
-        else { cargo build --release --locked -p victory }
+        if ($Build -eq 'diag') { cargo build --locked --profile diag -p VanguardScarletX --features diagnostics }
+        else { cargo build --release --locked -p VanguardScarletX }
     } finally { Pop-Location }
     if (-not (Test-Path $victory)) { Write-Host "The build did not make $victory."; return }
 }

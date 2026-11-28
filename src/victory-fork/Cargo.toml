@@ -73,7 +73,7 @@ opt-level = 2
 debug = "line-tables-only"
 
 # The development build: release code generation plus the `diagnostics`
-# feature (`cargo build --profile diag -p victory --features diagnostics`),
+# feature (`cargo build --profile diag -p VanguardScarletX --features diagnostics`),
 # kept in its own folder so it does not evict the plain release build.
 [profile.diag]
 inherits = "release"

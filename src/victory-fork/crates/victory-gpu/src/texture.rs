@@ -86,9 +86,6 @@ pub(crate) struct Staging {
     /// others), and what that was judged by ([`Staging::judgement`]).
     detiled: std::sync::atomic::AtomicU32,
     judged: [std::sync::atomic::AtomicU64; 2],
-    /// The levels the last upload wrote: a level brought back since then
-    /// (`resource::promote_reduced`) is uploaded once more.
-    copied: std::sync::atomic::AtomicU32,
     /// For such a texture: when an upload last left a held level without
     /// tiles (`crate::host::moment`, never 0; 0: none did). The upload is
     /// recorded again about a second later if the card has room by then
@@ -841,16 +838,6 @@ pub(crate) fn upload_from(list: &HostList, resource: This, first: u32) {
             }
         }
     }
-    // A texture made without its most detailed levels writes all but those
-    // that have no tiles; one brought back since the last upload
-    // (`resource::promote_reduced`) is uploaded again, which gives it tiles.
-    let copied = crate::resource::host_tiled(resource)
-        .and_then(|on| on.tiled().map(|t| t.copied_now()))
-        .unwrap_or(u32::MAX)
-        & !((1u32 << staging.first.min(31)) - 1);
-    if copied & !staging.copied.load(Relaxed) != 0 {
-        staging.dirty.store(true, Relaxed);
-    }
     // The video decoder cycles CPU-written linear plane buffers. Keep a
     // dedicated per-list upload buffer through the list's GPU fence so
     // concurrent frames never overwrite each other or stall on staging hashes.
@@ -915,7 +902,6 @@ pub(crate) fn upload_from(list: &HostList, resource: This, first: u32) {
         list.defer_host(move || {
             staging.uploaded.store(true, Relaxed);
             staging.dirty.store(false, Relaxed);
-            staging.copied.store(copied, Relaxed);
         });
     }
     // A host copy that took the place of one with fewer levels: the slots
@@ -1018,15 +1004,6 @@ impl PreludeUpload {
         };
         #[cfg(feature = "diagnostics")]
         crate::copystat::add(crate::copystat::C::TexUploads, 1);
-        // What the prelude writes: a level brought back since the last
-        // upload is written again by the next one.
-        let copied = self
-            .on_demand
-            .as_ref()
-            .and_then(|on| on.tiled().map(|t| t.copied_now()))
-            .unwrap_or(u32::MAX)
-            & !((1u32 << self.staging.first.min(31)) - 1);
-        self.staging.copied.store(copied, Relaxed);
         // A host copy that took the place of one with fewer levels: the slots
         // that show that one are made again once this upload has run.
         if self.staging.first == self.staging.level0 && self.copy.grown.swap(false, Relaxed) {
@@ -2243,7 +2220,6 @@ fn staging(resource: This, copy: &crate::resource::HostTexture, first: u32) -> O
         on_demand,
         detiled: std::sync::atomic::AtomicU32::new(0),
         judged: [const { std::sync::atomic::AtomicU64::new(0) }; 2],
-        copied: std::sync::atomic::AtomicU32::new(0),
         waiting: std::sync::atomic::AtomicU64::new(0),
         exact: std::sync::atomic::AtomicBool::new(BAKING.get()),
     });

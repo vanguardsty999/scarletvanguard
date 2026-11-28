@@ -1,5 +1,5 @@
 [package]
-name = "victory"
+name = "VanguardScarletX"
 description = "Command-line front end: inspect, census, convert, run."
 version.workspace = true
 edition.workspace = true

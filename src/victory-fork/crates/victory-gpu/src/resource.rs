@@ -1678,47 +1678,7 @@ fn hosted(this: This, make: bool) -> Option<Made> {
             && r.desc.depth_or_array_size == 1
             && r.desc.mip_levels > 1
             && r.desc.sample_count <= 1;
-        // Without the most detailed levels: how many this texture leaves
-        // out, by the bytes of host copies of title textures so far
-        // (`crate::tiles::DropPolicy`). Such a texture is made the same way
-        // as one whose levels come on demand.
-        let mut leave_out = 0;
-        if shape_fits && r.host.placed.load(Relaxed) && crate::tiles::card_can() {
-            crate::tiles::DROP_FILTER[0].fetch_add(1, Relaxed);
-            let shape = crate::tiles::Shape {
-                width: r.desc.width,
-                height: r.desc.height,
-                levels: u32::from(r.desc.mip_levels),
-                layers: u32::from(r.desc.depth_or_array_size),
-                plain_2d: true,
-                block_compressed: block_compressed(pc_format(r.desc.format)),
-            };
-            let policy = drop_policy();
-            let filled = filled_for_policy();
-            let reason = if filled < policy.one_from {
-                1
-            } else if !shape.block_compressed {
-                2
-            } else if shape.levels < policy.min_levels {
-                3
-            } else if shape.width < u64::from(policy.min_side) || u64::from(shape.height) < u64::from(policy.min_side) {
-                4
-            } else if shape.layers != 1 {
-                5
-            } else if !shape.plain_2d {
-                6
-            } else {
-                0
-            };
-            if reason > 0 {
-                crate::tiles::DROP_FILTER[reason].fetch_add(1, Relaxed);
-            } else {
-                leave_out = policy.levels(&shape, filled);
-            }
-        } else if shape_fits && !r.host.placed.load(Relaxed) {
-            crate::tiles::DROP_FILTER[7].fetch_add(1, Relaxed);
-        }
-        if shape_fits && r.host.placed.load(Relaxed) && (crate::tiles::wanted() || leave_out > 0) {
+        if shape_fits && r.host.placed.load(Relaxed) && crate::tiles::wanted() {
             let bytes = footprint(&r.desc).map_or(0, |f| f.size);
             let start = r.data() as u64;
             // What the upload can read: a console layout, no XOR mode
@@ -1729,26 +1689,15 @@ fn hosted(this: This, make: bool) -> Option<Made> {
                 && (!crate::texture::committed(r.data().cast_const(), bytes as usize)
                     || crate::descriptor::host::next_start(start, start.saturating_add(bytes)).is_some()
                     || crate::descriptor::host::first_viewed(start).is_some_and(|first| first > 0));
-            let reserved = if partly || leave_out > 0 {
-                host_texture_as(&r.desc, r.host.state, clear, true)
-            } else {
-                None
-            };
-            if leave_out > 0 && reserved.is_none() {
-                crate::tiles::DROP_FILTER[8].fetch_add(1, Relaxed);
-            }
+            let reserved = if partly { host_texture_as(&r.desc, r.host.state, clear, true) } else { None };
             let cut = reserved
                 .as_ref()
                 .zip(crate::host::host())
                 .and_then(|(t, host)| crate::tiles::Tiled::make(&host.device, t, u32::from(r.desc.mip_levels)));
-            if leave_out > 0 && cut.is_none() {
-                crate::tiles::DROP_FILTER[9].fetch_add(1, Relaxed);
-            }
             // (Both or neither: a reserved texture the card will not cut
             // into tiles is dropped here, and the old kind is made below.)
-            if let Some(cut) = cut {
-                cut.leave_out(leave_out);
-                tiled = Some(cut);
+            if cut.is_some() {
+                tiled = cut;
                 texture = reserved;
             }
         }
@@ -1805,14 +1754,7 @@ fn hosted(this: This, make: bool) -> Option<Made> {
             KINDS[5].fetch_add(host.bytes, Relaxed);
         }
         KINDS[6].fetch_add(1, Relaxed);
-        let host = std::sync::Arc::new(host);
-        if host.tiled.as_ref().is_some_and(|t| t.dropped() > 0) {
-            REDUCED
-                .lock()
-                .unwrap_or_else(|e| e.into_inner())
-                .push((r.data() as u64, std::sync::Arc::downgrade(&host)));
-        }
-        *made = Some((host, twin));
+        *made = Some((std::sync::Arc::new(host), twin));
         // Slots the title wrote with views of it while it had no host copy
         // are made before the next submission runs.
         crate::descriptor::texture_made(this as usize);
@@ -1820,11 +1762,6 @@ fn hosted(this: This, make: bool) -> Option<Made> {
     let now = crate::host::moment();
     if r.host.used.load(Relaxed) != now {
         r.host.used.store(now, Relaxed);
-    }
-    if let Some((host, _)) = made.as_ref()
-        && let Some(tiled) = &host.tiled
-    {
-        tiled.touch(now);
     }
     made.clone()
 }
@@ -2039,131 +1976,6 @@ pub(crate) fn room_percent() -> u64 {
             .and_then(|v| v.trim().parse::<u64>().ok())
             .map_or(90, |percent| percent.clamp(50, 97))
     })
-}
-
-/// Whether a host format (DXGI) is block-compressed: BC1 to BC7.
-#[cfg(windows)]
-fn block_compressed(format: u32) -> bool {
-    matches!(format, 70..=84 | 94..=99)
-}
-
-/// Host copies made without their most detailed levels that may still get
-/// them back ([`promote_reduced`]): where the title texture's memory starts
-/// and a weak hold on the copy.
-#[cfg(windows)]
-static REDUCED: std::sync::Mutex<Vec<(u64, std::sync::Weak<HostTexture>)>> = std::sync::Mutex::new(Vec::new());
-
-/// The policy for dropping the most detailed levels of large block-compressed
-/// host copies (`crate::tiles::DropPolicy`), settled once, by then the host
-/// device exists and says the card's budget. The line is the bytes of host
-/// copies of title textures the card has room for: `VICTORY_TEXTURE_DROP_LINE_MB`
-/// or `VICTORY_TEXTURE_BUDGET_MB` if set, else the room percent's share of the
-/// budget less what render targets, card copies of buffers, and everything
-/// else on the card take in this profile.
-#[cfg(windows)]
-fn drop_policy() -> &'static crate::tiles::DropPolicy {
-    static POLICY: std::sync::OnceLock<crate::tiles::DropPolicy> = std::sync::OnceLock::new();
-    POLICY.get_or_init(|| {
-        const MB: u64 = 1 << 20;
-        const OTHERS: u64 = (2806 + 850 + 1200) * MB;
-        let env_mb = |name: &str| std::env::var(name).ok().and_then(|v| v.trim().parse::<u64>().ok()).map(|mb| mb * MB);
-        let budget = crate::host::host().and_then(|h| h.video_memory()).map(|[budget, ..]| budget);
-        let line = env_mb("VICTORY_TEXTURE_DROP_LINE_MB")
-            .or_else(|| env_mb("VICTORY_TEXTURE_BUDGET_MB"))
-            .or_else(|| budget.map(|b| (b / 100 * room_percent()).saturating_sub(OTHERS)))
-            .unwrap_or(1600 * MB)
-            .max(1024 * MB);
-        let var = |name: &str| std::env::var(name).ok();
-        let policy = crate::tiles::DropPolicy::parse(
-            var("VICTORY_TEXTURE_DROP_LEVELS").as_deref(),
-            var("VICTORY_TEXTURE_DROP_MIN_SIDE").as_deref(),
-            var("VICTORY_TEXTURE_DROP_MIN_LEVELS").as_deref(),
-            var("VICTORY_TEXTURE_DROP_FROM").as_deref(),
-            line,
-        );
-        tracing::info!(
-            mode = ?policy.mode,
-            line_mb = line >> 20,
-            budget_mb = budget.map(|b| b >> 20),
-            one_level_from_mb = policy.one_from >> 20,
-            two_levels_from_mb = policy.two_from >> 20,
-            min_side = policy.min_side,
-            min_levels = policy.min_levels,
-            tiled_resources_tier_2 = crate::tiles::card_can(),
-            "host copies of large block-compressed title textures are made without their most detailed levels past a line (VICTORY_TEXTURE_DROP_LEVELS)"
-        );
-        policy
-    })
-}
-
-/// The bytes of host copies of title textures the policy goes by: those
-/// made whole, the tiles given to those made level by level, and what those
-/// made and not uploaded yet will take.
-#[cfg(windows)]
-fn filled_for_policy() -> u64 {
-    use std::sync::atomic::Ordering::Relaxed;
-    KINDS[1].load(Relaxed) + crate::tiles::given_total() + crate::tiles::DROP[6].load(Relaxed)
-}
-
-/// Brings levels back to host copies made without them, while the card has
-/// room (`room`, as the texture pass found it) and no texture picked by index
-/// waits for it (`waiting`): the copies asked for most lately first, one
-/// level each, while the bytes of host copies stay under the policy's first
-/// line, within `VICTORY_TEXTURE_PROMOTE_MB` (64) a frame and at most every
-/// half second. Returns the levels brought back.
-#[cfg(windows)]
-pub(crate) fn promote_reduced(room: bool, waiting: u64) -> u64 {
-    use std::sync::atomic::Ordering::Relaxed;
-    static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
-    static PER_FRAME: std::sync::OnceLock<u64> = std::sync::OnceLock::new();
-    let per_frame = *PER_FRAME.get_or_init(|| {
-        std::env::var("VICTORY_TEXTURE_PROMOTE_MB").ok().and_then(|v| v.trim().parse::<u64>().ok()).unwrap_or(64) << 20
-    });
-    if !room || waiting > 0 || per_frame == 0 || crate::tiles::DROP[0].load(Relaxed) == 0 {
-        return 0;
-    }
-    let now = crate::host::now_ms();
-    if now < NEXT.load(Relaxed) {
-        return 0;
-    }
-    NEXT.store(now + 500, Relaxed);
-    let policy = drop_policy();
-    if policy.mode != crate::tiles::DropMode::Auto {
-        return 0;
-    }
-    let mut candidates: Vec<(u64, u64, std::sync::Arc<HostTexture>)> = {
-        let mut reduced = REDUCED.lock().unwrap_or_else(|e| e.into_inner());
-        reduced.retain(|(_, weak)| weak.upgrade().is_some_and(|h| h.tiled.as_ref().is_some_and(|t| t.dropped() > 0)));
-        reduced
-            .iter()
-            .filter_map(|(memory, weak)| {
-                let host = weak.upgrade()?;
-                let used = host.tiled.as_ref()?.last_used();
-                Some((used, *memory, host))
-            })
-            .collect()
-    };
-    candidates.sort_unstable_by_key(|&(used, memory, _)| (used, memory));
-    let mut spent = 0;
-    let mut count = 0;
-    for (_, memory, host) in candidates {
-        let Some(tiled) = host.tiled.as_ref() else {
-            continue;
-        };
-        let bytes = tiled.promotion_bytes();
-        if bytes == 0 || spent + bytes > per_frame {
-            continue;
-        }
-        if filled_for_policy() + bytes >= policy.one_from {
-            break;
-        }
-        if tiled.promote().is_some() {
-            spent += bytes;
-            count += 1;
-            crate::descriptor::host::levels_changed_after(memory);
-        }
-    }
-    count
 }
 
 /// The line [`room`] weighs the card's use against, in bytes of a budget
@@ -2900,8 +2712,7 @@ fn host_texture_as(
     // A texture the title fills, whose every subresource is uploaded before
     // anything reads it: cut from a block (what the piece held before shows
     // in no texel).
-    if !reserved
-        && fills(desc)
+    if fills(desc)
         && d.sample_count <= 1
         && clear_value.is_none()
         && texture_layout(desc).is_some_and(|t| !t.planes[0].layout.desc.swizzle.xor())
@@ -2988,14 +2799,6 @@ pub(crate) fn host_tiled(this: This) -> Option<OnDemand> {
 #[cfg(windows)]
 pub(crate) fn first_shown(this: This) -> Option<u32> {
     host_tiled(this)?.tiled()?.first_shown()
-}
-
-/// The levels a view of title texture `this` may show, as far as shaping a
-/// view goes: a texture made without its most detailed levels keeps its
-/// dimensions and only clamps the sample's minimum LOD.
-#[cfg(windows)]
-pub(crate) fn view_shape(this: This) -> Option<crate::tiles::ViewLevels> {
-    host_tiled(this)?.tiled()?.view_shape()
 }
 
 /// A host copy made without memory of its own (`crate::tiles`), as a

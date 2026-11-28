@@ -52,7 +52,7 @@ switch ($Mode) {
     '6' { $opts = @{ Dlss = 'performance'; FrameGen = $true; Fps = 1000 }; $what = 'EXTREME: Series X 2560x1440, DLSS Performance, frame generation 2x, no cap, big pools, High priority' }
 }
 $sl = Join-Path $repo 'nvidia-sdk\Streamline\bin\x64'
-$victory = Join-Path $repo 'target\release\victory.exe'
+$victory = Join-Path $repo 'target\release\VanguardScarletX.exe'
 $hags = (Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Control\GraphicsDrivers' -Name HwSchMode -ErrorAction SilentlyContinue).HwSchMode
 $isWin11 = [Environment]::OSVersion.Version.Build -ge 22000
 $hagsOff = ($hags -eq 1) -or ($null -eq $hags -and -not $isWin11)
@@ -104,7 +104,7 @@ if (-not (Test-Path (Join-Path $sl 'sl.interposer.dll'))) {
 }
 if ($hagsOff) { Write-Host 'Hardware-accelerated GPU scheduling is off: frame generation will not work until it is on.' }
 
-# 4. Start (play-foxhound.ps1 builds target\release\victory.exe the first time).
+# 4. Start (play-foxhound.ps1 builds target\release\VanguardScarletX.exe the first time).
 if (-not (Test-Path $victory)) { Write-Host 'First start: building the layer, a few minutes ...' }
 Write-Host "Starting the title: $what"
 Write-Host 'In the game: F1 settings menu, F3 stats panel. Keep this window open while playing.'

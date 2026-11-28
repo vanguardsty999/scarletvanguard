@@ -1,4 +1,4 @@
-> This is the README of fxceless/src/victory as this fork had it, kept for its
+> This is the README of fxceless/victory-fork as this fork had it, kept for its
 > description of upstream, the commands and the debugging switches. What it says of
 > speed and state is of that fork and another PC; this fork: [README](../README.md).
 

@@ -11,7 +11,7 @@ Meta: sair de 10–20 fps para um caminho estável. A ordem é **medir → ident
 | `Create*PipelineState` e compilação DXIL | PIX / `XCL_PSO_TRACE=1` | compilação **durante o gameplay** |
 | CPU hotspots e contentão | VTune | `job system`, filas, locks, `WaitForSingleObject` |
 | Migração de threads entre cores | ETW (`CSWITCH`, `PROC_THREAD`) | threads de job saltando de NUMA/core |
-| Cache de shader/PSO | logs do XCL/src/victory | hit rate baixo → compilações repetidas |
+| Cache de shader/PSO | logs do XCL/victory-fork | hit rate baixo → compilações repetidas |
 | Memória commit / page faults | ETW / Task Manager | crescimento ~1 GB a cada poucos segundos |
 
 ## 2. Ferramentas
@@ -50,11 +50,11 @@ Ação: **pré-compilar no build**.
 xcl shaders <pack.rpf> --precompile --only cs --pipelines
 # repetir para vs/ps conforme os estágios encontrados
 
-# src/victory
+# victory-fork
 victory translate <game dir> --validate --pipelines
 ```
 
-`scripts\pso-precompile.ps1` apenas **prepara os comandos**; rode com `-Execute` quando o download terminar e você autorizar. Nenhum arquivo do jogo é escrito: os caches ficam no diretório de dados/cache do XCL/src/victory.
+`scripts\pso-precompile.ps1` apenas **prepara os comandos**; rode com `-Execute` quando o download terminar e você autorizar. Nenhum arquivo do jogo é escrito: os caches ficam no diretório de dados/cache do XCL/victory-fork.
 
 ### H2 — job system e afinidade de threads
 Sintomas: threads de job migrando entre cores, waits longos, p95 muito acima da mediana.
@@ -74,11 +74,11 @@ O script é **somente leitura por padrão**; `-Apply` é necessário para altera
 | XCL | `XCL_DRED=1` | breadcrumbs em caso de device removal |
 | XCL | `XCL_FRAME_DUMP=2` | amostra frames e registra `non_dark_samples` |
 | XCL | `XCL_ADAPTER=nvidia` | escolhe a GPU NVIDIA explicitamente |
-| src/victory | `VICTORY_GPU_TIMING=1` | mede cada lista de submission |
-| src/victory | `VICTORY_PIPELINE_WAIT_MS=24` | reduz espera por criação de pipeline |
-| src/victory | `VICTORY_D3D12_DRED=1` | diagnóstico de falha de GPU |
-| src/victory | `VICTORY_ADAPTER=nvidia` | patch local: escolhe a GPU NVIDIA |
-| src/victory | `VICTORY_HOST_WAVE=32` | caminho wave64-em-32-lanes para NVIDIA |
+| victory-fork | `VICTORY_GPU_TIMING=1` | mede cada lista de submission |
+| victory-fork | `VICTORY_PIPELINE_WAIT_MS=24` | reduz espera por criação de pipeline |
+| victory-fork | `VICTORY_D3D12_DRED=1` | diagnóstico de falha de GPU |
+| victory-fork | `VICTORY_ADAPTER=nvidia` | patch local: escolhe a GPU NVIDIA |
+| victory-fork | `VICTORY_HOST_WAVE=32` | caminho wave64-em-32-lanes para NVIDIA |
 
 ## 5. Critério de aceite
 

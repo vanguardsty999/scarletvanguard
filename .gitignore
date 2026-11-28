@@ -21,7 +21,7 @@ progress.html
 used-pipelines.txt
 
 # Game data - never commit
-#*.exe
+*.exe
 *.dll
 *.rpf
 *.xvc
@@ -40,11 +40,13 @@ measurements/
 precompile-commands.txt
 
 # Local launcher output and a user-supplied title executable.
-#/bin/
+/bin/
 /game_scarlett_master.exe
 
 # Local settings written by the Victory launcher.
-/src/victory/victory-settings.txt
+/src/victory-fork/victory-settings.txt
+**/__pycache__/
+*.pyc
 
 # Local configuration
 victory.toml

@@ -37,10 +37,11 @@ That explains the practical mapping in this project:
 
 ## Precompile workflow
 
-`victory shaders --jobs 2 <game-folder>` now performs a scan first and reports
-`current/total (percent)` every 100 shaders. `victory warm --jobs 1` then warms
-the pipelines observed in prior runs. It must run while `victory.exe` is not
-running; driver compilation and cache writes otherwise compete with gameplay.
+`VanguardScarletX shaders --jobs 2 <game-folder>` now performs a scan first and
+reports `current/total (percent)` every 100 shaders. `VanguardScarletX warm
+--jobs 1` then warms the pipelines observed in prior runs. It must run while
+`VanguardScarletX.exe` is not running; driver compilation and cache writes
+otherwise compete with gameplay.
 
 ## GTA VI engine scope
 

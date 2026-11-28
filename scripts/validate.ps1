@@ -9,16 +9,16 @@ function Check-Item([bool]$ok, [string]$message) {
     else { Write-Host "  FAIL $message" -ForegroundColor Red; $script:problems++ }
 }
 
-Write-Host "Scarlet Vanguard validation - $root" -ForegroundColor Cyan
+Write-Host "XRMLX-Fusion validation - $root" -ForegroundColor Cyan
 
 $markers = @{
-    'src\leonida' = @('make_game.py', 'LICENSE')
-    'src\xcl'     = @('Cargo.toml', 'LICENSE')
-    'src\victory' = @('Cargo.toml', 'LICENSE', '.victory-root')
+    'leonida'      = @('make_game.py', 'LICENSE')
+    'xcl'          = @('Cargo.toml', 'LICENSE')
+    'victory-fork' = @('Cargo.toml', 'LICENSE', '.victory-root')
 }
 
-foreach ($name in @('src\leonida', 'src\xcl', 'src\victory')) {
-    $dir = Join-Path $root $name
+foreach ($name in @('leonida', 'xcl', 'victory-fork')) {
+    $dir = Join-Path (Join-Path $root 'src') $name
     Write-Host "`n[$name]" -ForegroundColor Cyan
     Check-Item (Test-Path $dir) 'source directory present'
     if (-not (Test-Path $dir)) { continue }
@@ -47,7 +47,7 @@ Check-Item ($null -eq $nested) "no internal .git/submodule metadata ($(@($nested
 
 Write-Host "`n[policy: no game data]" -ForegroundColor Cyan
 $forbidden = Get-ChildItem $root -Recurse -File -Force -Include '*.exe','*.dll','*.rpf','*.xvc','*.msixvc','*.ttpf','*.bk2','*.awc','*.bvh4' -ErrorAction SilentlyContinue |
-    Where-Object { $_.FullName -notmatch '\\(target|build|bin)\\' }
+    Where-Object { $_.FullName -notmatch '\\(target|build)\\' -and $_.FullName -ne (Join-Path $root 'bin\ScarletVanguard-Launcher.exe') -and $_.FullName -ne (Join-Path $root 'ScarletVanguard-Launcher.exe') }
 Check-Item ($null -eq $forbidden) "no executables, libraries, or game packages outside build output ($(@($forbidden).Count) files)"
 
 Write-Host "`n[build tools]" -ForegroundColor Cyan

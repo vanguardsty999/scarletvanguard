@@ -3154,7 +3154,7 @@ impl State {
             HEAP_TEXTURES_FULL.fetch_add(1, Ordering::Relaxed);
             once!("textures picked by index: the card has no room for more; they wait");
         }
-        let mut refused = 0u64;
+        let mut refused = 0;
         let baking = crate::texture::BAKING.get();
         before(0, || {
             // Room again: the slots held back while the card was full are
@@ -3698,11 +3698,6 @@ impl State {
         }
         // Told before anything after the loop looks at the queue.
         tells.flush();
-        // Host copies made without their most detailed levels get them back
-        // while the card has room and nothing waits for it
-        // (`resource::promote_reduced`).
-        crate::tiles::WAITING_FOR_ROOM.store(refused, Ordering::Relaxed);
-        crate::resource::promote_reduced(room, refused);
         if sync.is_none() && baking && served {
             BAKE_SERVED.store(host.texture_news().0 + 1, Ordering::Relaxed);
         }

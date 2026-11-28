@@ -4957,12 +4957,9 @@ fn make_twinned(
                 // level is shown from the first level that is the title's
                 // and has memory, if the title's view starts before it (a
                 // level without memory reads zeros: a black texture). The
-                // title's own view mostly starts there already. A texture
-                // made without its most detailed levels instead keeps the
-                // title's levels and dimensions and raises the view's
-                // minimum LOD clamp above the levels left out.
-                if let Some(view) = crate::resource::view_shape(resource)
-                    && (view.first_tiled > 0 || view.dropped > 0)
+                // title's own view mostly starts there already.
+                if let Some(first) = crate::resource::first_shown(resource)
+                    && first > 0
                 {
                     // SAFETY: a live resource.
                     let own = unsafe { texture.GetDesc() };
@@ -4980,7 +4977,7 @@ fn make_twinned(
                             },
                         },
                     };
-                    crate::tiles::shape_view(desc.get_or_insert(whole), view, u32::from(own.MipLevels));
+                    crate::tiles::show_from(desc.get_or_insert(whole), first, u32::from(own.MipLevels));
                 }
                 if copy.base > 0
                     && let Some(desc) = &mut desc

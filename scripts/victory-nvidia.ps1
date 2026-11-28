@@ -1,4 +1,4 @@
-# Starts the consolidated Victory runtime, which incorporates the Victory-NVIDIA base and
+# Starts the current Victory fork, which incorporates the Victory-NVIDIA base and
 # the newer upstream rendering fixes. It never downloads SDK files or modifies the game directory.
 param(
     [Parameter(Mandatory)][string]$GameExe,
@@ -10,11 +10,11 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
-$repo = Join-Path $root 'src\victory'
-$victory = Join-Path $repo 'target\release\victory.exe'
+$repo = Join-Path $root 'src\victory-fork'
+$victory = Join-Path $repo 'target\release\VanguardScarletX.exe'
 
 if (-not (Test-Path -LiteralPath $repo)) {
-    throw 'Victory source is missing.'
+    throw 'victory-fork source is missing.'
 }
 if (-not (Test-Path -LiteralPath $GameExe)) {
     throw "Game executable not found: $GameExe"
@@ -30,12 +30,12 @@ if ($UseDlss) {
 }
 
 if ($Build) {
-    & (Join-Path $PSScriptRoot 'build.ps1') -Component victory
+    & (Join-Path $PSScriptRoot 'build.ps1') -Component victory-fork
     if ($LASTEXITCODE -ne 0) { throw "Victory build failed: $LASTEXITCODE" }
 }
 if (-not (Test-Path -LiteralPath $victory)) {
-    & (Join-Path $PSScriptRoot 'build.ps1') -Component victory
-    if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $victory)) { throw 'Victory build did not produce victory.exe.' }
+    & (Join-Path $PSScriptRoot 'build.ps1') -Component victory-fork
+    if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $victory)) { throw 'VanguardScarletX build did not produce VanguardScarletX.exe.' }
 }
 
 Write-Host 'Victory safe profile: RTX 3070 / Series S / no frame generation / RT off.' -ForegroundColor Cyan

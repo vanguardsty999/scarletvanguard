@@ -48,16 +48,6 @@
 //! is not all its own when the host copy is made (`resource.rs` `hosted`);
 //! every other texture is made as before. Off unless
 //! `VICTORY_LEVELS_ON_DEMAND=1`.
-//!
-//! A second use of the same machinery: large block-compressed title textures
-//! lose their most detailed levels when the card is short of room
-//! (`VICTORY_TEXTURE_DROP_LEVELS`, on by default; `0` disables it). They are
-//! reserved textures whose top levels never receive tiles. The texture keeps
-//! its dimensions and level numbers; a view of it only gets its
-//! `ResourceMinLODClamp` raised to the first level with tiles
-//! ([`shape_view`]), so a sample stops there instead of reading zeros. An
-//! upload leaves the levels left out alone; [`Tiled::promote`] brings one
-//! back when there is room again.
 
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
@@ -80,48 +70,6 @@ const HEAP_TILES: u32 = 1024;
 /// uploads that left a held level without tiles (the card had no room, or
 /// no heap could be had); uploads recorded again for such a level.
 pub(crate) static STATS: [AtomicU64; 11] = [const { AtomicU64::new(0) }; 11];
-
-/// For the textures made without their most detailed levels: (0) alive now,
-/// (1) bytes of their levels left out now, (2) made so far, (3) levels left
-/// out at the making, (4) levels brought back, (5) their bytes, (6) bytes
-/// planned for textures made and not uploaded yet.
-pub(crate) static DROP: [AtomicU64; 7] = [const { AtomicU64::new(0) }; 7];
-
-/// Slots of textures the last texture pass held back for want of room
-/// (`draw.rs` `heap_textures`), for the drop log line.
-pub(crate) static WAITING_FOR_ROOM: AtomicU64 = AtomicU64::new(0);
-
-/// Why a host copy that could be cut was left whole: (0) considered, (1)
-/// below the byte line, (2) not block-compressed, (3) too few levels, (4)
-/// too small, (5) several layers, (6) not two-dimensional, (7) no place in
-/// the title's memory, (8) no reserved texture, (9) the card would not cut
-/// it. For finding which filter keeps `VICTORY_TEXTURE_DROP_LEVELS` from
-/// acting.
-pub(crate) static DROP_FILTER: [AtomicU64; 10] = [const { AtomicU64::new(0) }; 10];
-
-/// Whether the card reads zeros from, and drops writes to, levels without
-/// memory (tiled resources tier 2): what any use of this module needs.
-pub(crate) fn card_can() -> bool {
-    static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
-    if let Some(&on) = ON.get() {
-        return on;
-    }
-    let Some(host) = host() else {
-        return false;
-    };
-    *ON.get_or_init(|| {
-        let mut options = D3D12_FEATURE_DATA_D3D12_OPTIONS::default();
-        // SAFETY: a plain query into a struct of its own size.
-        let asked = unsafe {
-            host.device.CheckFeatureSupport(
-                D3D12_FEATURE_D3D12_OPTIONS,
-                (&raw mut options).cast(),
-                size_of_val(&options) as u32,
-            )
-        };
-        asked.is_ok() && options.TiledResourcesTier.0 >= 2
-    })
-}
 
 /// Whether textures are made this way: the switch
 /// (`VICTORY_LEVELS_ON_DEMAND=1`; off by default), and a card that reads
@@ -323,18 +271,6 @@ pub(crate) struct Tiled {
     /// The levels a recorded list of the card's own writes has already
     /// written with zeros first ([`Tiled::claim`]).
     claimed: AtomicU32,
-    /// How many of the most detailed levels are left out: they never get
-    /// tiles, and views stop above them ([`Tiled::leave_out`]).
-    dropped: AtomicU32,
-    /// Made without levels (whether or not they came back since).
-    reduced: std::sync::atomic::AtomicBool,
-    /// When the host copy was last asked for (`crate::host::moment`): the
-    /// order in which left-out levels are brought back.
-    used: AtomicU64,
-    /// Bytes its levels left to be given: counted from the making to the
-    /// first upload, so a pass making hundreds of copies before its list is
-    /// submitted sees them.
-    planned: AtomicU64,
 }
 
 impl Tiled {
@@ -401,113 +337,7 @@ impl Tiled {
             held: AtomicU32::new(0),
             card: AtomicU32::new(0),
             claimed: AtomicU32::new(0),
-            dropped: AtomicU32::new(0),
-            reduced: std::sync::atomic::AtomicBool::new(false),
-            used: AtomicU64::new(0),
-            planned: AtomicU64::new(0),
         })
-    }
-
-    /// Leaves the `count` most detailed levels out (at the making; 0: none):
-    /// at most the levels with tiles of their own, and never all levels.
-    /// The bytes the others take are counted as planned until the first
-    /// upload.
-    pub(crate) fn leave_out(&self, count: u32) {
-        let count = count.min(self.standard.len() as u32).min(self.levels.saturating_sub(1));
-        let before = self.dropped.swap(count, Ordering::Relaxed);
-        self.reduced.store(count > 0, Ordering::Relaxed);
-        if before == 0 && count > 0 {
-            DROP[2].fetch_add(1, Ordering::Relaxed);
-            DROP[3].fetch_add(u64::from(count), Ordering::Relaxed);
-        }
-        match (before > 0, count > 0) {
-            (false, true) => {
-                DROP[0].fetch_add(1, Ordering::Relaxed);
-            }
-            (true, false) => {
-                DROP[0].fetch_sub(1, Ordering::Relaxed);
-            }
-            _ => {}
-        }
-        DROP[1].fetch_add(self.top_bytes(count), Ordering::Relaxed);
-        DROP[1].fetch_sub(self.top_bytes(before), Ordering::Relaxed);
-        let planned = self.full.saturating_sub(self.top_bytes(count));
-        let was = self.planned.swap(planned, Ordering::Relaxed);
-        DROP[6].fetch_add(planned, Ordering::Relaxed);
-        DROP[6].fetch_sub(was, Ordering::Relaxed);
-    }
-
-    /// The bytes of the tiles of the `count` most detailed levels.
-    fn top_bytes(&self, count: u32) -> u64 {
-        self.standard.iter().take(count as usize).map(|&tiles| u64::from(tiles) * TILE).sum()
-    }
-
-    /// How many of the most detailed levels are left out now.
-    pub(crate) fn dropped(&self) -> u32 {
-        self.dropped.load(Ordering::Relaxed)
-    }
-
-    /// The levels left out now, a bit a level.
-    pub(crate) fn dropped_mask(&self) -> u32 {
-        let count = self.dropped();
-        if count >= 32 { u32::MAX } else { (1u32 << count) - 1 }
-    }
-
-    /// Brings back the least detailed of the levels left out, if any. From
-    /// now on an upload writes it and gives it tiles (when there is room).
-    /// Returns the bytes it will take.
-    pub(crate) fn promote(&self) -> Option<u64> {
-        let now = self.dropped.load(Ordering::Relaxed);
-        if now == 0 {
-            return None;
-        }
-        if self.dropped.compare_exchange(now, now - 1, Ordering::Relaxed, Ordering::Relaxed).is_err() {
-            return None;
-        }
-        let bytes = u64::from(self.standard[(now - 1) as usize]) * TILE;
-        DROP[1].fetch_sub(bytes, Ordering::Relaxed);
-        DROP[4].fetch_add(1, Ordering::Relaxed);
-        DROP[5].fetch_add(bytes, Ordering::Relaxed);
-        self.planned.fetch_add(bytes, Ordering::Relaxed);
-        DROP[6].fetch_add(bytes, Ordering::Relaxed);
-        Some(bytes)
-    }
-
-    /// The bytes of the level a [`Tiled::promote`] would bring back.
-    pub(crate) fn promotion_bytes(&self) -> u64 {
-        match self.dropped() {
-            0 => 0,
-            now => u64::from(self.standard[(now - 1) as usize]) * TILE,
-        }
-    }
-
-    /// Notes when the host copy was last asked for ([`Tiled::last_used`]).
-    pub(crate) fn touch(&self, moment: u64) {
-        self.used.store(moment, Ordering::Relaxed);
-    }
-
-    /// When the host copy was last asked for.
-    pub(crate) fn last_used(&self) -> u64 {
-        self.used.load(Ordering::Relaxed)
-    }
-
-    /// The levels an upload writes now: every one but a left-out level that
-    /// has no tiles (a copy into it would go nowhere).
-    pub(crate) fn copied_now(&self) -> u32 {
-        self.every_level() & !(self.dropped_mask() & self.without(self.dropped_mask()))
-    }
-
-    /// What the views of this texture show, as far as the shape of a view is
-    /// concerned: a reduced texture keeps its clamp above the levels left
-    /// out even after they come back (a level without tiles reads zeros).
-    pub(crate) fn view_shape(&self) -> Option<ViewLevels> {
-        let dropped = if self.reduced.load(Ordering::Relaxed) { self.dropped().max(1) } else { 0 };
-        let first_tiled = match self.first_shown() {
-            Some(first) => first,
-            None if dropped > 0 => dropped,
-            None => return None,
-        };
-        Some(ViewLevels { first_held: 0, first_tiled, dropped })
     }
 
     /// At the submission of a list that uploads every level of `texture`
@@ -541,8 +371,7 @@ impl Tiled {
         held: u32,
         room: bool,
     ) -> (bool, bool) {
-        // A level left out never gets tiles, however the title names it.
-        let held = held & self.every_level() & !self.dropped_mask();
+        let held = held & self.every_level();
         let mut given = self.given.lock().unwrap_or_else(|e| e.into_inner());
         self.held.store(held, Ordering::Relaxed);
         let card = self.card.load(Ordering::Relaxed);
@@ -687,9 +516,6 @@ impl Tiled {
         named: u32,
         may: u32,
     ) -> bool {
-        // A left-out level is never given tiles, including when the card
-        // itself writes it (a write into no memory is dropped by the card).
-        let named = named & !self.dropped_mask();
         let has = |level: u32| level < 32 && named & (1 << level) != 0;
         let now = |level: u32| level < 32 && named & may & (1 << level) != 0;
         let first_packed = self.standard.len() as u32;
@@ -817,183 +643,6 @@ impl Drop for Tiled {
         STATS[0].fetch_sub(1, Ordering::Relaxed);
         STATS[1].fetch_sub(self.full, Ordering::Relaxed);
         STATS[2].fetch_sub(bytes, Ordering::Relaxed);
-        let dropped = self.dropped();
-        if dropped > 0 {
-            DROP[0].fetch_sub(1, Ordering::Relaxed);
-            DROP[1].fetch_sub(self.top_bytes(dropped), Ordering::Relaxed);
-            DROP[6].fetch_sub(self.planned.load(Ordering::Relaxed), Ordering::Relaxed);
-        }
-    }
-}
-
-/// What the views of a texture made without its most detailed levels show.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) struct ViewLevels {
-    /// The first level the title holds (always 0 here: the texture keeps
-    /// its dimensions and level numbers).
-    pub(crate) first_held: u32,
-    /// The first level with tiles: a sample stops there.
-    pub(crate) first_tiled: u32,
-    /// Levels left out.
-    pub(crate) dropped: u32,
-}
-
-/// Shapes the shader view of a texture whose top levels were left out. The
-/// view keeps the levels and dimensions the title gave it: only
-/// `ResourceMinLODClamp` rises to the first level with tiles, so a sample
-/// stops there instead of reading zeros from a level without memory. With
-/// no levels left out this is the same shift as before
-/// ([`show_from`]). `VICTORY_TEXTURE_DROP_VIEWS=shift` asks for the old
-/// shift even for a reduced texture; `keep` also moves the view to the
-/// first level the title holds.
-pub(crate) fn shape_view(desc: &mut D3D12_SHADER_RESOURCE_VIEW_DESC, view: ViewLevels, levels: u32) {
-    #[derive(PartialEq)]
-    enum How {
-        Clamp,
-        Keep,
-        Shift,
-    }
-    static HOW: std::sync::OnceLock<How> = std::sync::OnceLock::new();
-    let how = HOW.get_or_init(|| match std::env::var("VICTORY_TEXTURE_DROP_VIEWS").as_deref().map(str::trim) {
-        Ok("shift") => How::Shift,
-        Ok("keep") => How::Keep,
-        _ => How::Clamp,
-    });
-    if view.dropped == 0 || *how == How::Shift {
-        show_from(desc, view.first_tiled, levels);
-        return;
-    }
-    if *how == How::Keep {
-        show_from(desc, view.first_held, levels);
-        min_lod_from(desc, view.first_tiled, levels);
-        return;
-    }
-    clamp_from(desc, view.first_tiled, levels);
-}
-
-/// Raises a two-dimensional view's `ResourceMinLODClamp` to `first` (in the
-/// texture's levels) and changes nothing else.
-pub(crate) fn clamp_from(desc: &mut D3D12_SHADER_RESOURCE_VIEW_DESC, first: u32, levels: u32) {
-    if first == 0 || first >= levels {
-        return;
-    }
-    min_lod_from(desc, first, levels);
-}
-
-/// Raises `ResourceMinLODClamp` without moving the view's first level.
-fn min_lod_from(desc: &mut D3D12_SHADER_RESOURCE_VIEW_DESC, first: u32, levels: u32) {
-    if first == 0 || first >= levels {
-        return;
-    }
-    let raise = |min_lod: &mut f32| *min_lod = min_lod.max(first as f32);
-    match desc.ViewDimension {
-        // SAFETY: `ViewDimension` selects `Texture2D`.
-        D3D12_SRV_DIMENSION_TEXTURE2D => raise(unsafe { &mut desc.Anonymous.Texture2D.ResourceMinLODClamp }),
-        // SAFETY: `ViewDimension` selects `Texture2DArray`.
-        D3D12_SRV_DIMENSION_TEXTURE2DARRAY => raise(unsafe { &mut desc.Anonymous.Texture2DArray.ResourceMinLODClamp }),
-        _ => {}
-    }
-}
-
-/// Whether a texture's host copy is made without its most detailed levels,
-/// and how many: `VICTORY_TEXTURE_DROP_LEVELS`.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum DropMode {
-    /// `0`: never, as before.
-    Off,
-    /// The default (`auto`): by the bytes of host copies so far.
-    Auto,
-    /// `force1`, `force2`: that many from every texture that may lose levels.
-    Force(u32),
-}
-
-/// The shape of a texture the policy looks at.
-#[derive(Clone, Copy, Debug)]
-pub(crate) struct Shape {
-    pub(crate) width: u64,
-    pub(crate) height: u32,
-    pub(crate) levels: u32,
-    pub(crate) layers: u32,
-    pub(crate) plain_2d: bool,
-    pub(crate) block_compressed: bool,
-}
-
-/// Which host copies of title textures lose their most detailed levels, and
-/// how many, at the moment each is made. Never a small texture, one that is
-/// not block-compressed, one with fewer than `min_levels` levels, of several
-/// layers, or not two-dimensional: those may be masks or lookup tables read
-/// texel by texel, where a level left out would read as zeros. With `auto`,
-/// none below half the line, one from there, two past four fifths of it.
-#[derive(Clone, Copy, Debug)]
-pub(crate) struct DropPolicy {
-    pub(crate) mode: DropMode,
-    pub(crate) min_side: u32,
-    pub(crate) min_levels: u32,
-    pub(crate) one_from: u64,
-    pub(crate) two_from: u64,
-}
-
-impl DropPolicy {
-    /// From the switches' values and the bytes of host copies the card has
-    /// room for (`line`).
-    pub(crate) fn parse(
-        mode: Option<&str>,
-        min_side: Option<&str>,
-        min_levels: Option<&str>,
-        from: Option<&str>,
-        line: u64,
-    ) -> DropPolicy {
-        let mode = match mode.map(str::trim) {
-            Some("0" | "off") => DropMode::Off,
-            Some("force1" | "force") => DropMode::Force(1),
-            Some("force2") => DropMode::Force(2),
-            _ => DropMode::Auto,
-        };
-        let number = |v: Option<&str>, default: u64| v.and_then(|v| v.trim().parse::<u64>().ok()).unwrap_or(default);
-        let min_side = number(min_side, 1024).clamp(16, 1 << 14) as u32;
-        let min_levels = number(min_levels, 5).clamp(2, 16) as u32;
-        let (one, two) = match from.map(|v| v.split(',').map(|p| p.trim().parse::<u64>().ok()).collect::<Vec<_>>()) {
-            Some(parts) if parts.len() == 2 && parts.iter().all(Option::is_some) => {
-                let one = parts[0].unwrap_or(50).min(1000);
-                (one, parts[1].unwrap_or(80).clamp(one, 1000))
-            }
-            _ => (50, 80),
-        };
-        DropPolicy {
-            mode,
-            min_side,
-            min_levels,
-            one_from: line / 100 * one,
-            two_from: line / 100 * two,
-        }
-    }
-
-    /// Whether a texture of this shape may lose levels at all.
-    pub(crate) fn may_drop(&self, shape: &Shape) -> bool {
-        self.mode != DropMode::Off
-            && shape.plain_2d
-            && shape.block_compressed
-            && shape.layers == 1
-            && shape.levels >= self.min_levels
-            && shape.width >= u64::from(self.min_side)
-            && shape.height >= self.min_side
-    }
-
-    /// How many of its most detailed levels a texture of this shape leaves
-    /// out, made when host copies of title textures take `filled` bytes.
-    /// At least `min_levels - 2` levels stay.
-    pub(crate) fn levels(&self, shape: &Shape, filled: u64) -> u32 {
-        if !self.may_drop(shape) {
-            return 0;
-        }
-        let wanted = match self.mode {
-            DropMode::Off => 0,
-            DropMode::Force(n) => n,
-            DropMode::Auto if filled >= self.two_from => 2,
-            DropMode::Auto if filled >= self.one_from => 1,
-            DropMode::Auto => 0,
-        };
-        wanted.min(shape.levels.saturating_sub(self.min_levels.saturating_sub(2).max(1)))
     }
 }
 
@@ -1038,15 +687,6 @@ pub(crate) fn show_from(desc: &mut D3D12_SHADER_RESOURCE_VIEW_DESC, first: u32, 
 /// the mapping calls cost since the line before.
 pub(crate) fn status() {
     static BEFORE: [AtomicU64; 2] = [const { AtomicU64::new(0) }; 2];
-    let f: Vec<u64> = DROP_FILTER.iter().map(|f| f.load(Ordering::Relaxed)).collect();
-    if f[0] > 0 {
-        tracing::info!(
-            "why host copies were not made without their most detailed levels: {} considered, {} below the byte line, \
-             {} not block-compressed, {} too few levels, {} too small, {} with several layers, {} not two-dimensional, \
-             {} with no place in title memory, {} no reserved texture, {} the card would not cut",
-            f[0], f[1], f[2], f[3], f[4], f[5], f[6], f[7], f[8], f[9],
-        );
-    }
     let s: Vec<u64> = STATS.iter().map(|s| s.load(Ordering::Relaxed)).collect();
     if s[4] == 0 {
         return;
@@ -1074,23 +714,6 @@ pub(crate) fn status() {
         s[9],
         s[10],
     );
-    let d: Vec<u64> = DROP.iter().map(|d| d.load(Ordering::Relaxed)).collect();
-    if d[2] > 0 {
-        tracing::info!(
-            "textures made without their most detailed levels (VICTORY_TEXTURE_DROP_LEVELS): {} alive, {} MB of the \
-             card not allocated for the levels left out; {} made so far, {} levels left out at their making; {} levels \
-             brought back so far ({} MB); {} MB planned for textures made and not uploaded yet; slots held back for \
-             want of room at the last pass: {}",
-            d[0],
-            d[1] >> 20,
-            d[2],
-            d[3],
-            d[4],
-            d[5] >> 20,
-            d[6] >> 20,
-            WAITING_FOR_ROOM.load(Ordering::Relaxed),
-        );
-    }
 }
 
 /// On the card, without the title: what levels on demand relies on, with
@@ -1947,10 +1570,6 @@ void look() {
             held: AtomicU32::new(0),
             card: AtomicU32::new(0),
             claimed: AtomicU32::new(0),
-            dropped: AtomicU32::new(0),
-            reduced: std::sync::atomic::AtomicBool::new(false),
-            used: AtomicU64::new(0),
-            planned: AtomicU64::new(0),
         };
         assert_eq!(tiled.claim(1 << 0), 1 << 0);
         let changed = tiled.card_wrote_on(host.queue(), &host.device, &tex, 1 << 0);

@@ -1,5 +1,5 @@
 param(
-    [ValidateSet('leonida','xcl','victory','all')]
+    [ValidateSet('leonida','xcl','victory-fork','all')]
     [string]$Component = 'all',
     [string]$GameDir = '',
     [string]$WorkDir = '',
@@ -41,21 +41,21 @@ function Build-Xcl {
 }
 
 function Build-Victory {
-    $dir = Join-Path $root 'src\victory'
+    $dir = Join-Path $root 'src\victory-fork'
     Initialize-Msvc
-    if (-not (Test-Tool 'cargo')) { throw 'Rust (rust-toolchain.toml) is required for Victory: https://rustup.rs' }
+    if (-not (Test-Tool 'cargo')) { throw 'Rust (rust-toolchain.toml) is required for victory-fork: https://rustup.rs' }
     Push-Location $dir
     try {
-        if ($NoRelease) { & cargo build -p victory } else { & cargo build --release -p victory }
+        if ($NoRelease) { & cargo build -p VanguardScarletX } else { & cargo build --release -p VanguardScarletX }
     } finally { Pop-Location }
 }
 
-Write-Host "Scarlet Vanguard build: $Component" -ForegroundColor Cyan
+Write-Host "XRMLX-Fusion build: $Component" -ForegroundColor Cyan
 
 switch ($Component) {
     'leonida'      { Build-Leonida }
     'xcl'          { Build-Xcl }
-    'victory'      { Build-Victory }
+    'victory-fork' { Build-Victory }
     'all'          {
         Build-Xcl
         Build-Victory

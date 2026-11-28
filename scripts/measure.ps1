@@ -1,5 +1,5 @@
 param(
-    [ValidateSet('xcl','victory')]
+    [ValidateSet('xcl','victory-fork')]
     [string]$Component = 'xcl',
     [string]$GamePath = '',
     [ValidateSet('pix','vtune','etw','all')]
@@ -77,7 +77,7 @@ if ($Component -eq 'xcl') {
     $exe = Join-Path $root 'src\xcl\target\release\xcl.exe'
     $commands += "`"$exe`" run `"$GamePath`""
 } else {
-    $exe = Join-Path $root 'src\victory\target\release\victory.exe'
+    $exe = Join-Path $root 'src\victory-fork\target\release\VanguardScarletX.exe'
     $commands += "`"$exe`" run `"$GamePath`" --execute"
 }
 
