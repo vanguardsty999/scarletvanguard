@@ -37,14 +37,18 @@ one repository with a shared build and publication policy.
 - [ ] Establish repeatable PIX/ETW frame-time captures for every supported path.
 - [ ] Promote only measured, reproducible compatibility results.
 
-## Performance snapshot
+## Performance snapshot — Scarlet Vanguard rumo a 60 FPS+
 
 ![Current experimental performance](assets/metrics/current-performance.svg)
 
-These values are local observations from separate sessions on 27 November
-2026—not a benchmark and not directly comparable between runtimes. The Victory
-scene is currently dominated by texture residency and incomplete translation;
-the XCL menu result does not represent map or gameplay stability. See
+**60 FPS+ é a meta de desempenho do Scarlet Vanguard.** Ela depende de reduzir
+o custo de tradução, eliminar as lacunas D3D12 e estabilizar o streaming de
+texturas; não representa ainda uma garantia ou resultado alcançado.
+
+Os valores abaixo são observações locais de sessões separadas em 27 de novembro
+de 2026 — não são benchmark e não são diretamente comparáveis entre runtimes.
+A cena Victory ainda é dominada por residência de textura e tradução incompleta;
+o resultado de menu do XCL não representa estabilidade no mapa ou em gameplay. Veja
 [startup diagnosis](docs/STARTUP_CRASH_DIAGNOSIS.md) and
 [streaming notes](docs/XBOX_STREAMING_AND_DX12.md) for the raw context.
 
