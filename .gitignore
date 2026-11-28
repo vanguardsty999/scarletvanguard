@@ -40,7 +40,7 @@ measurements/
 precompile-commands.txt
 
 # Local launcher output and a user-supplied title executable.
-/bin/
+#/bin/
 /game_scarlett_master.exe
 
 # Local settings written by the Victory launcher.
