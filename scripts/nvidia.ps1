@@ -1,5 +1,5 @@
 param(
-    [ValidateSet('xcl','victory-fork','victory-nvidia','env')]
+    [ValidateSet('xcl','victory','victory-nvidia','env')]
     [string]$Component = 'env',
     [string]$GamePath = '',
     [string]$Adapter = 'nvidia',
@@ -14,7 +14,7 @@ Initialize-Msvc
 
 # XCL: escolhe o adaptador por substring do nome (ex.: "nvidia", "rtx 4070") ou índice.
 $env:XCL_ADAPTER = $Adapter
-# victory-fork: o fork agora entende VICTORY_ADAPTER; 32 lanes é o caso NVIDIA.
+# Victory: o runtime agora entende VICTORY_ADAPTER; 32 lanes é o caso NVIDIA.
 $env:VICTORY_ADAPTER = $Adapter
 # HOST_WAVE/HOST_MAX_WAVE valem apenas para `victory translate`, nao para `victory run`.
 $env:VICTORY_HOST_WAVE = '32'
@@ -31,7 +31,7 @@ if ($Build) {
 }
 
 if ($Component -eq 'env' -or [string]::IsNullOrWhiteSpace($GamePath)) {
-    Write-Host 'Use -Component xcl|victory-fork e -GamePath para executar o jogo. victory-nvidia remains an alias.' -ForegroundColor Yellow
+    Write-Host 'Use -Component xcl|victory e -GamePath para executar o jogo. victory-nvidia remains an alias.' -ForegroundColor Yellow
     return
 }
 
@@ -39,11 +39,11 @@ if (-not (Test-Path $GamePath)) { throw "Caminho do jogo não encontrado: $GameP
 
 switch ($Component) {
     'xcl' {
-        $exe = Join-Path $root 'xcl\target\release\xcl.exe'
+        $exe = Join-Path $root 'src\xcl\target\release\xcl.exe'
         if (-not (Test-Path $exe)) { throw "Build ausente: $exe" }
         & $exe run $GamePath
     }
-    'victory-fork' {
+    'victory' {
         # `play` applies the current fork's renderer defaults, F1/F3 UI and
         # pipeline-book settings; raw `run --execute` intentionally does not.
         & (Join-Path $PSScriptRoot 'victory-nvidia.ps1') -GameExe $GamePath

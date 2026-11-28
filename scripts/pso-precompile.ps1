@@ -1,7 +1,7 @@
 param(
     [Parameter(Mandatory = $true)]
     [string]$GameDir,
-    [ValidateSet('xcl','victory-fork','both')]
+    [ValidateSet('xcl','victory','both')]
     [string]$Component = 'both',
     [string]$OutFile = '',
     [switch]$Execute
@@ -31,11 +31,11 @@ Write-Host "RPF packages found: $($packs.Count)" -ForegroundColor Yellow
 $lines = @()
 $lines += "# PSO precompile commands - generated $(Get-Date -Format o)"
 $lines += "# Game: $GameDir"
-$lines += '# Caches stay in the XCL/victory-fork data or cache folder, never in the game.'
+$lines += '# Caches stay in the XCL/Victory data or cache folder, never in the game.'
 $lines += ''
 
-$xclExe = Join-Path $root 'xcl\target\release\xcl.exe'
-$vicExe = Join-Path $root 'victory-fork\target\release\victory.exe'
+$xclExe = Join-Path $root 'src\xcl\target\release\xcl.exe'
+$vicExe = Join-Path $root 'src\victory\target\release\victory.exe'
 
 if ($Component -in @('xcl','both')) {
     $lines += '## XCL'
@@ -46,8 +46,8 @@ if ($Component -in @('xcl','both')) {
     $lines += ''
 }
 
-if ($Component -in @('victory-fork','both')) {
-    $lines += '## victory-fork'
+if ($Component -in @('victory','both')) {
+    $lines += '## Victory'
     $lines += "`"$vicExe`" translate `"$GameDir`" --validate --pipelines"
     foreach ($p in $packs) {
         $lines += "# `"$vicExe`" translate `"$($p.FullName)`" --validate --pipelines"
@@ -64,7 +64,7 @@ if ($Execute) {
         if (-not (Test-Path -LiteralPath $xclExe)) { throw "Executable missing: $xclExe" }
         foreach ($p in $packs) { & $xclExe shaders $p.FullName --precompile --pipelines }
     }
-    if ($Component -in @('victory-fork','both')) {
+    if ($Component -in @('victory','both')) {
         if (-not (Test-Path -LiteralPath $vicExe)) { throw "Executable missing: $vicExe" }
         & $vicExe translate $GameDir --validate --pipelines
     }

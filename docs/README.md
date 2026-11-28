@@ -15,7 +15,7 @@ Scripts correspondentes (todos com modo padrão **somente leitura / sem executar
 .\scripts\probe-game.ps1 -GameDir "N:\downloads\GTA6.Xbox.v1.0.2.1-CYBERLEEK"
 .\scripts\pso-precompile.ps1 -GameDir "N:\downloads\GTA6.Xbox.v1.0.2.1-CYBERLEEK"
 .\scripts\measure.ps1 -Component xcl -GamePath "...\game_scarlett_master.exe" -Tool all
-.\scripts\measure.ps1 -Component victory-fork -GamePath "...\game_scarlett_master.exe" -Tool etw
+.\scripts\measure.ps1 -Component src/victory -GamePath "...\game_scarlett_master.exe" -Tool etw
 .\scripts\affinity.ps1 -ProcessName victory -Cores 0-7
 .\scripts\optimize-rtx3070.ps1 -Preset safe -Component none
 ```

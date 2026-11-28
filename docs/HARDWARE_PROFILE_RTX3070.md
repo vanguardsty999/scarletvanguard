@@ -19,7 +19,7 @@ O WMI reporta `AdapterRAM = 4 GB` por causa do campo de 32 bits; a RTX 3070 tem 
 
 **60 fps+ não é alcançável com o estado atual dos upstreams.** Não é uma questão de ajustar variáveis:
 
-- `victory-fork/README.md` registra **2–4 fps** no prólogo (420–450 ms/frame; 240–350 ms com os switches novos), com iluminação em sombra ainda ausente.
+- `src/victory/README.md` registra **2–4 fps** no prólogo (420–450 ms/frame; 240–350 ms com os switches novos), com iluminação em sombra ainda ausente.
 - XCL registra ~28–30 fps com watchdog em cenários próprios, sem sessão de jogo reproduzida localmente.
 - Nenhum desses números foi medido nesta máquina. O `.exe` do jogo ainda não terminou de baixar.
 
@@ -47,7 +47,7 @@ Só depois de medir o `safe`. Troca memória por paralelismo:
 - `XCL_DSTORAGE_WORKERS=4`, `XCL_DSTORAGE_MEMORY_BUDGET_MIB=64`
 - `VICTORY_WIDE_BACK=1`, `VICTORY_LATE_WAIT=3`
 - `VICTORY_CARD_BUFFERS_MB=1024`, `VICTORY_TEXTURE_BUDGET_MB=4096`
-- Combinação documentada no README do victory-fork; **não medida nesta máquina**.
+- Combinação documentada no README do src/victory; **não medida nesta máquina**.
 
 ### `-Trace`
 
@@ -55,7 +55,7 @@ Adiciona `XCL_PSO_TRACE=1`, `XCL_DRED=1`, `XCL_FRAME_DUMP=2`, `VICTORY_GPU_TIMIN
 
 ## 4. Variáveis que só valem na tradução
 
-`VICTORY_HOST_WAVE=32` e `VICTORY_HOST_MAX_WAVE=32` são lidas em `victory-fork/apps/victory/src/translate.rs` e `main.rs`, **apenas no subcomando `translate`**. Definir isso antes de `victory run` não muda nada em runtime.
+`VICTORY_HOST_WAVE=32` e `VICTORY_HOST_MAX_WAVE=32` são lidas em `src/victory/apps/victory/src/translate.rs` e `main.rs`, **apenas no subcomando `translate`**. Definir isso antes de `victory run` não muda nada em runtime.
 
 Elas são aplicadas por `Set-TranslateEnv` (chamada por `pso-precompile.ps1`) para gerar DXIL com waves de 32 lanes, adequado à NVIDIA. Não devem ser confundidas com otimização de runtime.
 
@@ -82,13 +82,13 @@ Com 23,92 GB de RAM e um título que chegou a ocupar ~24 GB no upstream, 17 GB d
 .\scripts\optimize-rtx3070.ps1 -Preset safe -Component none
 
 # Quando o .exe existir e você autorizar
-.\scripts\optimize-rtx3070.ps1 -Preset safe -Component victory-fork `
+.\scripts\optimize-rtx3070.ps1 -Preset safe -Component src/victory `
     -GamePath "N:\downloads\GTA6.Xbox.v1.0.2.1-CYBERLEEK\game_scarlett_master.exe" `
     -ApplyAffinity -Launch
 
 # Executavel unico: abre o titulo ja com o perfil aplicado
 .\bin\ScarletVanguard.exe -Probe      # so mostra o plano
-.\bin\ScarletVanguard.exe             # lanca victory-fork com safe + afinidade
+.\bin\ScarletVanguard.exe             # lanca src/victory com safe + afinidade
 .\bin\ScarletVanguard.exe -Preset speed -Trace   # variante agressiva + diagnosticos
 ```
 
@@ -137,6 +137,6 @@ O executável foi localizado na raiz de `XRMLX-Fusion` (cópia feita pelo usuár
 - Nenhum arquivo do diretório `N:\downloads\GTA6.Xbox.v1.0.2.1-CYBERLEEK` foi modificado.
 - Foi feita uma **cópia byte-a-byte** do título em `bin\ScarletVanguard-Title.exe` (SHA-256 idêntico ao original na raiz); o original não foi alterado. Renomear um PE não muda o que o loader exige — a cópia existe para dar ao projeto um executável com o nome dele, não para alterar compatibilidade.
 - O executável novo criado é `bin\ScarletVanguard.exe`: contém o título incorporado e os switches de otimização já aplicados por padrão. Ele não é um PE recompilado do jogo — é o PE do jogo mais um stub que configura e chama o loader.
-- Nenhuma otimização foi injetada no código do jogo: XCL/victory-fork continuam sendo quem implementa HLE, tradução de shaders e agendamento.
+- Nenhuma otimização foi injetada no código do jogo: XCL/src/victory continuam sendo quem implementa HLE, tradução de shaders e agendamento.
 - Nenhuma sessão de jogo, captura PIX/VTune/ETW ou pré-compilação foi executada.
 - Nenhum commit foi feito nesta rodada.

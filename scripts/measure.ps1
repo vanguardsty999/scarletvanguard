@@ -1,5 +1,5 @@
 param(
-    [ValidateSet('xcl','victory-fork')]
+    [ValidateSet('xcl','victory')]
     [string]$Component = 'xcl',
     [string]$GamePath = '',
     [ValidateSet('pix','vtune','etw','all')]
@@ -74,10 +74,10 @@ if ($Tool -in @('etw','all')) {
 $commands += ''
 $commands += '# Launch commands (only when authorized):'
 if ($Component -eq 'xcl') {
-    $exe = Join-Path $root 'xcl\target\release\xcl.exe'
+    $exe = Join-Path $root 'src\xcl\target\release\xcl.exe'
     $commands += "`"$exe`" run `"$GamePath`""
 } else {
-    $exe = Join-Path $root 'victory-fork\target\release\victory.exe'
+    $exe = Join-Path $root 'src\victory\target\release\victory.exe'
     $commands += "`"$exe`" run `"$GamePath`" --execute"
 }
 

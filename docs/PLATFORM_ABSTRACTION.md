@@ -1,15 +1,15 @@
 # Camada de abstração de plataforma (XDK → Win32)
 
-Objetivo: separar **o que o título pede** (XDK/Xbox) de **como o PC responde** (Win32/D3D12), substituindo aos poucos os stubs por implementações nativas. Nada aqui depende de alterar o jogo; toda a mudança acontece nos componentes `xcl/` e `victory-fork/`.
+Objetivo: separar **o que o título pede** (XDK/Xbox) de **como o PC responde** (Win32/D3D12), substituindo aos poucos os stubs por implementações nativas. Nada aqui depende de alterar o jogo; toda a mudança acontece nos componentes `xcl/` e `src/victory/`.
 
 ## Duas trilhas
 
 ### A. Com fonte disponível — abstração dentro do runtime
 
-Tanto XCL quanto victory-fork já têm o ponto de separação natural:
+Tanto XCL quanto src/victory já têm o ponto de separação natural:
 
 - XCL: `crates/xcl/src/hle/` — `kernelx`, `XGameRuntime`, `d3d12x`, `xaudio2`, `vfs`, `memory`, `tls`.
-- victory-fork: `crates/victory-hle/src/modules/` — o mesmo papel, com `d3d12x`, `files`, `audio`, `lifecycle`, `xmem` etc.
+- src/victory: `crates/victory-hle/src/modules/` — o mesmo papel, com `d3d12x`, `files`, `audio`, `lifecycle`, `xmem` etc.
 
 Cada chamada do título entra por um desses módulos. A regra é: **a interface continua sendo a do console; a implementação por trás vira Win32 nativa**.
 
@@ -72,7 +72,7 @@ census/inspect → priorizar por chamadas reais (ETW/PIX)
 ```powershell
 .\scripts\pso-precompile.ps1 -GameDir "N:\downloads\GTA6.Xbox.v1.0.2.1-CYBERLEEK"
 .\scripts\measure.ps1 -Component xcl -GamePath ".\game_scarlett_master.exe" -Tool etw
-.\scripts\measure.ps1 -Component victory-fork -GamePath ".\game_scarlett_master.exe" -Tool etw
+.\scripts\measure.ps1 -Component src/victory -GamePath ".\game_scarlett_master.exe" -Tool etw
 ```
 
 Com o `census` em mãos, a priorização deve usar contagem de chamadas por export, não intuição. A tabela acima vem de `xcl inspect` e `victory census`; a contagem de chamadas em runtime ainda exige ETW/PIX.

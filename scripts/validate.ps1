@@ -9,15 +9,15 @@ function Check-Item([bool]$ok, [string]$message) {
     else { Write-Host "  FAIL $message" -ForegroundColor Red; $script:problems++ }
 }
 
-Write-Host "XRMLX-Fusion validation - $root" -ForegroundColor Cyan
+Write-Host "Scarlet Vanguard validation - $root" -ForegroundColor Cyan
 
 $markers = @{
-    'leonida'      = @('make_game.py', 'LICENSE')
-    'xcl'          = @('Cargo.toml', 'LICENSE')
-    'victory-fork' = @('Cargo.toml', 'LICENSE', '.victory-root')
+    'src\leonida' = @('make_game.py', 'LICENSE')
+    'src\xcl'     = @('Cargo.toml', 'LICENSE')
+    'src\victory' = @('Cargo.toml', 'LICENSE', '.victory-root')
 }
 
-foreach ($name in @('leonida', 'xcl', 'victory-fork')) {
+foreach ($name in @('src\leonida', 'src\xcl', 'src\victory')) {
     $dir = Join-Path $root $name
     Write-Host "`n[$name]" -ForegroundColor Cyan
     Check-Item (Test-Path $dir) 'source directory present'

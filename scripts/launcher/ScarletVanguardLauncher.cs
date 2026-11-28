@@ -63,7 +63,7 @@ namespace ScarletVanguardLauncher
         }
 
         public static string Bin { get { return Path.Combine(Repo, "bin"); } }
-        public static string Xcl { get { return Path.Combine(Repo, @"xcl\target\release\xcl.exe"); } }
+        public static string Xcl { get { return Path.Combine(Repo, @"src\xcl\target\release\xcl.exe"); } }
         public static string Manifest { get { return Path.Combine(Bin, "ScarletVanguard-ShaderManifest.txt"); } }
         public static string Logs { get { return Path.Combine(Repo, "measurements", "launcher"); } }
         public static string BrandImage { get { return Path.Combine(Repo, @"assets\branding\scarlet-vanguard-banner.png"); } }

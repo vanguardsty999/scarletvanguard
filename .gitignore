@@ -44,7 +44,7 @@ precompile-commands.txt
 /game_scarlett_master.exe
 
 # Local settings written by the Victory launcher.
-/victory-fork/victory-settings.txt
+/src/victory/victory-settings.txt
 
 # Local configuration
 victory.toml

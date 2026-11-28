@@ -1,8 +1,8 @@
-# XRMLX Fusion
+# Scarlet Vanguard
 
 > **Experimental Xbox Series compatibility runtime for Windows x64**
 
-XRMLX Fusion is a research workspace for studying how Xbox Series workloads can
+Scarlet Vanguard is a research workspace for studying how Xbox Series workloads can
 be hosted on a Windows x64 PC. It keeps independent compatibility-layer
 implementations together with reproducible build, diagnostics, shader-cache and
 launch tooling.
@@ -36,13 +36,14 @@ Xbox Series title
 Windows x64 + D3D12 + DXGI + NVIDIA driver
 ```
 
-The repository deliberately keeps multiple research implementations separate:
+The repository is a single Git superproject. Its implementation units share the
+same tooling, policies and release surface; they are not Git submodules.
 
 | Directory | Responsibility |
 | --- | --- |
-| `xcl/` | D3D12.X / DXIL compatibility-layer research |
-| `victory-fork/` | Current NVIDIA-oriented runtime, streaming and pipeline experiments |
-| `leonida/` | Vulkan-oriented research path |
+| `src/xcl/` | D3D12.X / DXIL compatibility-layer research |
+| `src/victory/` | Current NVIDIA-oriented runtime, streaming and pipeline experiments |
+| `src/leonida/` | Vulkan-oriented research path |
 | `scripts/` | Reproducible build, validation, measurement and launch tooling |
 | `configs/` | Hardware profiles |
 | `docs/` | Architecture notes, diagnosis and performance evidence |
@@ -54,7 +55,7 @@ stored outside this repository.
 
 ```powershell
 ./scripts/validate.ps1
-./scripts/build.ps1 -Component victory-fork
+./scripts/build.ps1 -Component victory
 
 # Offline cache preparation. Run only while victory.exe is closed.
 ./scripts/victory-nvidia.ps1 -GameExe 'D:\Games\Title\game_scarlett_master.exe' -Preload
@@ -91,6 +92,6 @@ measurement steps.
 
 ## License and attribution
 
-XRMLX Fusion is an aggregation of independent research components. Consult the
+Scarlet Vanguard is an aggregation of independent research components. Consult the
 license and notices within each source tree before redistribution or derivative
 work.

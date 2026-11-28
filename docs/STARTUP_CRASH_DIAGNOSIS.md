@@ -33,7 +33,7 @@ Logs: `measurements/preflight/`, `measurements/run-safe-1280x720/`, `measurement
   (SHA-256 `E95020B2FA4A721DB3DF59FDECF75621730AC559D8835252F6C3B658D5A08993`). XCL now finds the
   real DLLs and `.rpf` archives in the same folder; there are no missing imports.
 - Windows Defender had quarantined `xcl.exe`; an exclusion for
-  `C:\Users\rafae\Desktop\XRMVI\XRMLX-Fusion\xcl\target` was added and the binary rebuilt. It runs
+  `C:\Users\rafae\Desktop\XRMVI\XRMLX-Fusion\src\xcl\target` was added and the binary rebuilt. It runs
   again (`xcl 0.1.0`). The older note saying no runnable `xcl.exe` remained is obsolete.
 
 ## Crash site #1 — Breakpad initialization (victory, `bin`)
@@ -324,7 +324,7 @@ applications were changed.
 
 Installed and verified: PIX `2611.19`, WPT/xperf `10.0.26100.7705`, VTune `2025.3.0 (build 630104)`,
 Capstone 5.0.7 for x64 analysis. The successful run above is the first local FPS measurement;
-p50/p95/p99 and profiler captures are still outstanding. The older victory-fork 2–4 fps and XCL
+p50/p95/p99 and profiler captures are still outstanding. The older src/victory 2–4 fps and XCL
 28–30 fps claims are now consistent with the observed XCL 30.0 fps but were not the source of it.
 
 ## Options to continue

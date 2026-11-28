@@ -50,7 +50,7 @@ in that order of size:
 - **Boats sank, the sea plane went under.** The ocean's height and displacement maps are
   textures that compute passes write and the title's physics sample on the CPU. They were
   never brought back to title memory. Fixed by Geckomacabre's read-back as merged in
-  fxceless/victory-fork f5c03f3b; on by default here (`VICTORY_TEXTURE_BACK=0`: off).
+  fxceless/src/victory f5c03f3b; on by default here (`VICTORY_TEXTURE_BACK=0`: off).
   With it the boat stays up through a whole run; without it sank in every one.
 - **A device loss about every 16 minutes**: a page fault inside a texture made in the same
   tenth of a second. A slot showed it before its upload had run.
@@ -97,7 +97,7 @@ in that order of size:
 
 ## The other repositories, compared
 
-Read up to 2026-11-25: Marvisak/VIctory, fxceless/victory-fork, DexNom/VIctory,
+Read up to 2026-11-25: Marvisak/VIctory, fxceless/src/victory, DexNom/VIctory,
 Belobug/VIctory-Belobug-AMD, FQY55kai/ZJOU-VICTORY. What was taken is in the history,
 each commit naming its source. In short:
 

@@ -1,5 +1,5 @@
 param(
-    [ValidateSet('leonida','xcl','victory-fork','all')]
+    [ValidateSet('leonida','xcl','victory','all')]
     [string]$Component = 'all',
     [string]$GameDir = '',
     [string]$WorkDir = '',
@@ -13,7 +13,7 @@ $root = Split-Path -Parent $PSScriptRoot
 function Test-Tool([string]$name) { return $null -ne (Get-Command $name -ErrorAction SilentlyContinue) }
 
 function Build-Leonida {
-    $dir = Join-Path $root 'leonida'
+    $dir = Join-Path $root 'src\leonida'
     if (-not (Test-Tool 'python')) { throw 'Python 3.12+ is required for leonida.' }
     Push-Location $dir
     try {
@@ -31,7 +31,7 @@ function Build-Leonida {
 }
 
 function Build-Xcl {
-    $dir = Join-Path $root 'xcl'
+    $dir = Join-Path $root 'src\xcl'
     Initialize-Msvc
     if (-not (Test-Tool 'cargo')) { throw 'Rust stable-x86_64-pc-windows-msvc is required for xcl: https://rustup.rs' }
     Push-Location $dir
@@ -41,21 +41,21 @@ function Build-Xcl {
 }
 
 function Build-Victory {
-    $dir = Join-Path $root 'victory-fork'
+    $dir = Join-Path $root 'src\victory'
     Initialize-Msvc
-    if (-not (Test-Tool 'cargo')) { throw 'Rust (rust-toolchain.toml) is required for victory-fork: https://rustup.rs' }
+    if (-not (Test-Tool 'cargo')) { throw 'Rust (rust-toolchain.toml) is required for Victory: https://rustup.rs' }
     Push-Location $dir
     try {
         if ($NoRelease) { & cargo build -p victory } else { & cargo build --release -p victory }
     } finally { Pop-Location }
 }
 
-Write-Host "XRMLX-Fusion build: $Component" -ForegroundColor Cyan
+Write-Host "Scarlet Vanguard build: $Component" -ForegroundColor Cyan
 
 switch ($Component) {
     'leonida'      { Build-Leonida }
     'xcl'          { Build-Xcl }
-    'victory-fork' { Build-Victory }
+    'victory'      { Build-Victory }
     'all'          {
         Build-Xcl
         Build-Victory
