@@ -21,7 +21,7 @@ progress.html
 used-pipelines.txt
 
 # Game data - never commit
-*.exe
+#*.exe
 *.dll
 *.rpf
 *.xvc
